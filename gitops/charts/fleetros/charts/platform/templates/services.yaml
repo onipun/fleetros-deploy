@@ -1,0 +1,99 @@
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: {{ $svc.replicas | default $.Values.defaults.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.image }}:{{ $svc.tag }}"
+          imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            {{- range $k, $v := $.Values.defaults.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- range $k, $v := ($svc.env | default dict) }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-creds, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-creds, key: POSTGRES_PASSWORD }
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          resources:
+            {{- toYaml $.Values.defaults.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ $svc.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ $svc.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- if $svc.ingressHost }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ $.Values.tlsIssuer }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: {{ $.Values.ingressClassName }}
+  tls:
+    - hosts: ["{{ $svc.ingressHost }}.{{ $.Values.domain }}"]
+      secretName: {{ $name }}-tls
+  rules:
+    - host: "{{ $svc.ingressHost }}.{{ $.Values.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  number: {{ $svc.port }}
+{{- end }}
+{{- end }}
+{{- end }}

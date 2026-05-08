@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform
+description: Backend microservices for Fleetros
+type: application
+version: 0.1.0

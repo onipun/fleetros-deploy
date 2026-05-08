@@ -1,0 +1,22 @@
+# Ansible
+*.retry
+.vault-pass
+.vault-pass.local
+infra/ansible/group_vars/local/vault.yml
+infra/ansible/inventory/prod.yml
+
+# Tofu
+infra/tofu/.terraform/
+infra/tofu/.terraform.lock.hcl
+infra/tofu/terraform.tfstate*
+infra/tofu/*.tfvars
+!infra/tofu/*.tfvars.example
+
+# Helm
+gitops/charts/**/charts/*.tgz
+gitops/charts/**/Chart.lock
+
+# Local
+.kube/
+*.swp
+.DS_Store

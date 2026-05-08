@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fleetros-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Argo CD Image Updater: only promote semver tags, write back via git
+    argocd-image-updater.argoproj.io/image-list: |
+      backoffice=so0n/car-rental-backoffice-service,
+      payment=so0n/car-rental-payment-service,
+      onboarding=so0n/car-rental-onboarding-service,
+      pricing=so0n/car-rental-rental-pricing-service,
+      reporting=so0n/car-rental-reporting-service,
+      customerportal=so0n/car-rental-customer-portal-service,
+      notification=so0n/car-rental-notification-service,
+      web=so0n/fleetros-backoffice-v2
+    argocd-image-updater.argoproj.io/backoffice.update-strategy: semver
+    argocd-image-updater.argoproj.io/backoffice.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/payment.update-strategy: semver
+    argocd-image-updater.argoproj.io/payment.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/onboarding.update-strategy: semver
+    argocd-image-updater.argoproj.io/onboarding.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/pricing.update-strategy: semver
+    argocd-image-updater.argoproj.io/pricing.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/reporting.update-strategy: semver
+    argocd-image-updater.argoproj.io/reporting.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/customerportal.update-strategy: semver
+    argocd-image-updater.argoproj.io/customerportal.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/notification.update-strategy: semver
+    argocd-image-updater.argoproj.io/notification.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/web.update-strategy: semver
+    argocd-image-updater.argoproj.io/web.allow-tags: "regexp:^v\\d+\\.\\d+\\.\\d+$"
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
+    argocd-image-updater.argoproj.io/write-back-target: "helmvalues:gitops/environments/prod/values.yaml"
+spec:
+  project: default
+  source:
+    repoURL: "git@github.com:YOUR_ORG/fleetros-deploy.git"
+    targetRevision: HEAD
+    path: gitops/charts/fleetros
+    helm:
+      valueFiles:
+        - ../../environments/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      jsonPointers: ["/data"]

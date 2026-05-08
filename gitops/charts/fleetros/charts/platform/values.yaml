@@ -1,0 +1,20 @@
+enabled: true
+namespace: app
+domain: fleetros.local
+tlsIssuer: fleetros-issuer
+ingressClassName: traefik
+
+defaults:
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  env:
+    POSTGRES_HOST: postgres.data.svc.cluster.local
+    POSTGRES_PORT: "5432"
+    REDIS_HOST: redis.data.svc.cluster.local
+    REDIS_PORT: "6379"
+    KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
+
+services: {}   # populated by parent (umbrella) values

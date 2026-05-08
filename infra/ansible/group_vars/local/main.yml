@@ -1,0 +1,7 @@
+---
+# Local profile overrides — points to local environment values.yaml
+fleetros_env: local
+gitops_values_file: "environments/local/values.yaml"
+argocd_repo_url: "{{ gitops_repo_url }}"
+backup_target: "minio"   # local MinIO instead of B2
+tls_issuer: "selfsigned" # self-signed instead of LE DNS-01

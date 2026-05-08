@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fleetros-local
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Argo CD Image Updater: bump on any new local-floating tag matching ^main-.+
+    argocd-image-updater.argoproj.io/image-list: |
+      backoffice=so0n/car-rental-backoffice-service,
+      payment=so0n/car-rental-payment-service,
+      onboarding=so0n/car-rental-onboarding-service,
+      pricing=so0n/car-rental-rental-pricing-service,
+      reporting=so0n/car-rental-reporting-service,
+      customerportal=so0n/car-rental-customer-portal-service,
+      web=so0n/fleetros-backoffice-v2
+    argocd-image-updater.argoproj.io/backoffice.update-strategy: latest
+    argocd-image-updater.argoproj.io/backoffice.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/payment.update-strategy: latest
+    argocd-image-updater.argoproj.io/payment.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/onboarding.update-strategy: latest
+    argocd-image-updater.argoproj.io/onboarding.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/pricing.update-strategy: latest
+    argocd-image-updater.argoproj.io/pricing.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/reporting.update-strategy: latest
+    argocd-image-updater.argoproj.io/reporting.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/customerportal.update-strategy: latest
+    argocd-image-updater.argoproj.io/customerportal.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/web.update-strategy: latest
+    argocd-image-updater.argoproj.io/web.allow-tags: "regexp:^main-.+"
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  project: default
+  source:
+    repoURL: "https://github.com/YOUR_ORG/fleetros-deploy.git"
+    targetRevision: HEAD
+    path: gitops/charts/fleetros
+    helm:
+      valueFiles:
+        - ../../environments/local/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      jsonPointers: ["/data"]

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: data
+description: Stateful services (postgres, redis, keycloak) for Fleetros
+type: application
+version: 0.1.0

@@ -1,0 +1,113 @@
+# Default values for the umbrella chart. Overridden per-env in environments/{local,prod}/values.yaml.
+
+global:
+  imageRegistry: docker.io
+  imagePullPolicy: IfNotPresent
+  storageClass: local-path        # K3s default
+  tlsIssuer: fleetros-issuer
+  ingressClassName: traefik
+  domain: fleetros.local           # overridden in prod
+  # Hostname suffix per service (subdomain prefix)
+  hosts:
+    api: api
+    portal: portal
+    auth: auth
+    grafana: grafana
+
+# ----------------------------------------------------------------------------
+# Subchart toggles + sizing
+# ----------------------------------------------------------------------------
+data:
+  enabled: true
+  postgres:
+    enabled: true
+    image: postgres
+    tag: "16-alpine"
+    persistence:
+      size: 10Gi
+    initScriptsConfigMap: postgres-init   # created out-of-band or via this chart
+  redis:
+    enabled: true
+    image: redis
+    tag: "7-alpine"
+    persistence:
+      size: 2Gi
+  keycloak:
+    enabled: true
+    image: quay.io/keycloak/keycloak
+    tag: "23.0"
+    persistence:
+      size: 2Gi
+    realmsConfigMap: keycloak-realms
+
+platform:
+  enabled: true
+  defaults:
+    imagePullPolicy: IfNotPresent
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  services:
+    backoffice:
+      enabled: true
+      image: so0n/car-rental-backoffice-service
+      tag: "latest"
+      port: 8082
+      ingressHost: api    # uses global.hosts.api + global.domain
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+    payment:
+      enabled: true
+      image: so0n/car-rental-payment-service
+      tag: "latest"
+      port: 8085
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+    onboarding:
+      enabled: true
+      image: so0n/car-rental-onboarding-service
+      tag: "latest"
+      port: 8083
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+    pricing:
+      enabled: true
+      image: so0n/car-rental-rental-pricing-service
+      tag: "latest"
+      port: 8081
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+    reporting:
+      enabled: true
+      image: so0n/car-rental-reporting-service
+      tag: "latest"
+      port: 8084
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+    customerportal:
+      enabled: true
+      image: so0n/car-rental-customer-portal-service
+      tag: "latest"
+      port: 8086
+      ingressHost: portal
+      env:
+        SPRING_PROFILES_ACTIVE: docker
+    notification:
+      enabled: true
+      image: so0n/car-rental-notification-service
+      tag: "latest"
+      port: 8086
+
+web:
+  enabled: true
+  image: so0n/fleetros-backoffice-v2
+  tag: "latest"
+  port: 3000
+  replicas: 1
+  env:
+    NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"

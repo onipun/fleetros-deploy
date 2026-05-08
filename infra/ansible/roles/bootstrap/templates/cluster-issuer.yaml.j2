@@ -1,0 +1,27 @@
+{% if fleetros_env == "local" %}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: fleetros-issuer
+spec:
+  selfSigned: {}
+{% else %}
+# Prod LE DNS-01 issuer — fill in your DNS provider config before applying.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: fleetros-issuer
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef:
+      name: fleetros-le-account-key
+    solvers:
+      - dns01:
+          # TODO: replace with your DNS provider (cloudflare/route53/etc.)
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+{% endif %}

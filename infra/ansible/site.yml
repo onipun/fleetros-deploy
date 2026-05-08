@@ -1,0 +1,20 @@
+---
+- name: Bootstrap Fleetros host (OS + K3s + Argo CD + secrets)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify vault loaded
+      ansible.builtin.assert:
+        that:
+          - vault_postgres_password is defined
+        fail_msg: "Vault not loaded — did you pass --vault-password-file?"
+
+  roles:
+    - role: common
+      tags: [common, os]
+    - role: k3s
+      tags: [k3s, cluster]
+    - role: bootstrap
+      tags: [bootstrap, argocd]

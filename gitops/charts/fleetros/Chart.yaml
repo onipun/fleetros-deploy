@@ -1,0 +1,17 @@
+apiVersion: v2
+name: fleetros
+description: Fleetros umbrella chart (data + platform + web)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: data
+    version: 0.1.0
+    repository: "file://charts/data"
+  - name: platform
+    version: 0.1.0
+    repository: "file://charts/platform"
+  - name: web
+    version: 0.1.0
+    repository: "file://charts/web"

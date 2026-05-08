@@ -1,0 +1,17 @@
+---
+# Local development inventory — points at multipass VM "fleetros-local"
+# multipass IP is dynamic; we resolve it at runtime via `multipass info`.
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: "~/.ssh/id_ed25519"
+    ansible_python_interpreter: /usr/bin/python3
+    fleetros_env: local
+
+  children:
+    local:
+      hosts:
+        fleetros-local:
+          # `make local-vm-up` writes this; otherwise discover via:
+          #   multipass info fleetros-local | awk '/IPv4/ {print $2; exit}'
+          ansible_host: "{{ lookup('pipe', 'multipass info fleetros-local 2>/dev/null | awk \"/IPv4/ {print \\$2; exit}\"') | default('127.0.0.1', true) }}"

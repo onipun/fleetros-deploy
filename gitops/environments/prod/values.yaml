@@ -1,0 +1,40 @@
+# Production overrides — applied on top of charts/fleetros/values.yaml
+global:
+  domain: fleetros.example
+  tlsIssuer: fleetros-issuer    # LE DNS-01 in prod (configured by Ansible)
+
+data:
+  postgres:
+    persistence:
+      size: 50Gi
+  redis:
+    persistence:
+      size: 5Gi
+  keycloak:
+    persistence:
+      size: 5Gi
+
+platform:
+  domain: fleetros.example
+  defaults:
+    replicas: 1
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 1536Mi }
+  # Tags below are pinned semver — Argo CD Image Updater rewrites them via the regexp ^v\d+\.\d+\.\d+$
+  services:
+    backoffice:        { enabled: true, image: so0n/car-rental-backoffice-service,        tag: v0.1.0, port: 8082, ingressHost: api,    env: { SPRING_PROFILES_ACTIVE: prod } }
+    payment:           { enabled: true, image: so0n/car-rental-payment-service,           tag: v0.1.0, port: 8085, env: { SPRING_PROFILES_ACTIVE: prod } }
+    onboarding:        { enabled: true, image: so0n/car-rental-onboarding-service,        tag: v0.1.0, port: 8083, env: { SPRING_PROFILES_ACTIVE: prod } }
+    pricing:           { enabled: true, image: so0n/car-rental-rental-pricing-service,    tag: v0.1.0, port: 8081, env: { SPRING_PROFILES_ACTIVE: prod } }
+    reporting:         { enabled: true, image: so0n/car-rental-reporting-service,         tag: v0.1.0, port: 8084, env: { SPRING_PROFILES_ACTIVE: prod } }
+    customerportal:    { enabled: true, image: so0n/car-rental-customer-portal-service,   tag: v0.1.0, port: 8086, ingressHost: portal, env: { SPRING_PROFILES_ACTIVE: prod } }
+    notification:      { enabled: true, image: so0n/car-rental-notification-service,      tag: v0.1.0, port: 8086 }
+
+web:
+  domain: fleetros.example
+  tag: v0.1.0
+  ingressHost: app
+  env:
+    NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.example"
+    NEXTAUTH_URL: "https://app.fleetros.example"

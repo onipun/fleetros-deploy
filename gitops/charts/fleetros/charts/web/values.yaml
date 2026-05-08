@@ -1,0 +1,12 @@
+enabled: true
+namespace: app
+domain: fleetros.local
+tlsIssuer: fleetros-issuer
+ingressClassName: traefik
+
+image: so0n/fleetros-backoffice-v2
+tag: "latest"
+port: 3000
+replicas: 1
+ingressHost: app    # https://app.fleetros.local
+env: {}

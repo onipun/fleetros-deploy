@@ -1,0 +1,28 @@
+---
+# Shared variables for both local and prod.
+fleetros_namespaces:
+  - argocd
+  - infra
+  - app
+  - data
+  - monitoring
+
+# Argo CD
+argocd_chart_version: "7.7.7"
+argocd_namespace: argocd
+
+# Argo CD Image Updater
+argocd_image_updater_chart_version: "0.11.0"
+
+# cert-manager
+cert_manager_chart_version: "v1.16.1"
+cert_manager_namespace: infra
+
+# Gitops repo (where Argo CD pulls from). Override per-env in inventory if you split repos later.
+gitops_repo_url: "https://github.com/YOUR_ORG/fleetros-deploy.git"
+gitops_repo_revision: "HEAD"
+gitops_repo_path_charts: "gitops/charts/fleetros"
+
+# K3s
+k3s_version: "v1.31.4+k3s1"
+k3s_kubeconfig_local_path: "{{ lookup('env', 'HOME') }}/.kube/fleetros-{{ fleetros_env }}"

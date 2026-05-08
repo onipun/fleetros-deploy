@@ -1,0 +1,69 @@
+# Local development overrides — applied on top of charts/fleetros/values.yaml
+global:
+  domain: fleetros.local
+  tlsIssuer: fleetros-issuer
+
+data:
+  postgres:
+    persistence:
+      size: 5Gi   # smaller for laptop
+  keycloak:
+    persistence:
+      size: 1Gi
+
+platform:
+  domain: fleetros.local
+  defaults:
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+  services:
+    backoffice:
+      enabled: true
+      image: so0n/car-rental-backoffice-service
+      tag: "main-latest"     # local: floating dev tag allowed
+      port: 8082
+      ingressHost: api
+      env: { SPRING_PROFILES_ACTIVE: dev }
+    payment:
+      enabled: true
+      image: so0n/car-rental-payment-service
+      tag: "main-latest"
+      port: 8085
+      env: { SPRING_PROFILES_ACTIVE: dev }
+    onboarding:
+      enabled: true
+      image: so0n/car-rental-onboarding-service
+      tag: "main-latest"
+      port: 8083
+      env: { SPRING_PROFILES_ACTIVE: dev }
+    pricing:
+      enabled: true
+      image: so0n/car-rental-rental-pricing-service
+      tag: "main-latest"
+      port: 8081
+      env: { SPRING_PROFILES_ACTIVE: dev }
+    reporting:
+      enabled: true
+      image: so0n/car-rental-reporting-service
+      tag: "main-latest"
+      port: 8084
+      env: { SPRING_PROFILES_ACTIVE: dev }
+    customerportal:
+      enabled: true
+      image: so0n/car-rental-customer-portal-service
+      tag: "main-latest"
+      port: 8086
+      ingressHost: portal
+      env: { SPRING_PROFILES_ACTIVE: docker }
+    notification:
+      enabled: false   # mailpit only locally; notification svc disabled
+
+web:
+  domain: fleetros.local
+  tag: "main-latest"
+  ingressHost: app
+  env:
+    NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"
+    NEXTAUTH_URL: "https://app.fleetros.local"

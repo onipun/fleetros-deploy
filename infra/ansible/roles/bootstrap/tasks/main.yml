@@ -1,0 +1,99 @@
+---
+# bootstrap: install Helm, create namespaces, install cert-manager + Argo CD,
+# seed K8s Secrets from Ansible Vault.
+- name: Install Helm
+  ansible.builtin.shell: |
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+
+- name: Create namespaces
+  ansible.builtin.shell: |
+    kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ fleetros_namespaces }}"
+  changed_when: false
+
+- name: Add Helm repos
+  ansible.builtin.shell: |
+    helm repo add jetstack https://charts.jetstack.io
+    helm repo add argo https://argoproj.github.io/argo-helm
+    helm repo update
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Install cert-manager
+  ansible.builtin.shell: |
+    helm upgrade --install cert-manager jetstack/cert-manager \
+      --namespace {{ cert_manager_namespace }} \
+      --version {{ cert_manager_chart_version }} \
+      --set installCRDs=true \
+      --wait --timeout 5m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Apply self-signed ClusterIssuer (local) or LE issuer template (prod)
+  ansible.builtin.template:
+    src: "{{ item }}.yaml.j2"
+    dest: "/tmp/{{ item }}.yaml"
+  loop:
+    - cluster-issuer
+  register: issuer_files
+
+- name: kubectl apply ClusterIssuer
+  ansible.builtin.shell: kubectl apply -f /tmp/cluster-issuer.yaml
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Install Argo CD
+  ansible.builtin.shell: |
+    helm upgrade --install argocd argo/argo-cd \
+      --namespace {{ argocd_namespace }} \
+      --version {{ argocd_chart_version }} \
+      --set configs.params."server\.insecure"=true \
+      --wait --timeout 10m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Install Argo CD Image Updater
+  ansible.builtin.shell: |
+    helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+      --namespace {{ argocd_namespace }} \
+      --version {{ argocd_image_updater_chart_version }} \
+      --wait --timeout 5m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Render and apply seeded Secrets
+  ansible.builtin.template:
+    src: secrets.yaml.j2
+    dest: /tmp/fleetros-secrets.yaml
+    mode: "0600"
+
+- name: kubectl apply seeded Secrets
+  ansible.builtin.shell: kubectl apply -f /tmp/fleetros-secrets.yaml
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Remove rendered secrets file
+  ansible.builtin.file:
+    path: /tmp/fleetros-secrets.yaml
+    state: absent

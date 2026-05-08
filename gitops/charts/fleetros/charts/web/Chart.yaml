@@ -1,0 +1,5 @@
+apiVersion: v2
+name: web
+description: Next.js Fleetros backoffice frontend
+type: application
+version: 0.1.0

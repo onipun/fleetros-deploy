@@ -1,0 +1,44 @@
+---
+# k3s: install single-node K3s with embedded Traefik, fetch kubeconfig.
+- name: Check if K3s already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Install K3s (single-node)
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION={{ k3s_version }} \
+      INSTALL_K3S_EXEC="server --disable=servicelb --write-kubeconfig-mode=644 --tls-san={{ ansible_host }}" \
+      sh -
+  args:
+    executable: /bin/bash
+  when: not k3s_binary.stat.exists
+  register: k3s_install
+
+- name: Wait for K3s to become ready
+  ansible.builtin.shell: |
+    /usr/local/bin/kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+  args:
+    executable: /bin/bash
+  register: node_ready
+  until: node_ready.stdout == "True"
+  retries: 30
+  delay: 5
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Fetch kubeconfig to control node
+  ansible.builtin.fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ k3s_kubeconfig_local_path }}"
+    flat: true
+
+- name: Rewrite kubeconfig server URL
+  ansible.builtin.replace:
+    path: "{{ k3s_kubeconfig_local_path }}"
+    regexp: 'https://127.0.0.1:6443'
+    replace: "https://{{ ansible_host }}:6443"
+  delegate_to: localhost
+  become: false

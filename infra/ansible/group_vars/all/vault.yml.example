@@ -1,0 +1,18 @@
+---
+# Production secrets — edit with: ansible-vault edit group_vars/all/vault.yml
+# This file MUST be encrypted. Run `ansible-vault encrypt group_vars/all/vault.yml` after first edit.
+# Below is the schema; fill in real values during prod bootstrap.
+vault_postgres_password: "CHANGEME"
+vault_keycloak_admin_password: "CHANGEME"
+vault_redis_password: ""
+vault_dockerhub_username: "so0n"
+vault_dockerhub_token: "CHANGEME"
+vault_gitops_ssh_deploy_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  CHANGEME
+  -----END OPENSSH PRIVATE KEY-----
+vault_stripe_secret_key: ""
+vault_smtp_host: ""
+vault_smtp_port: 587
+vault_smtp_user: ""
+vault_smtp_password: ""

@@ -1,0 +1,80 @@
+{{- if .Values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleetros-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: fleetros-web
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: fleetros-web
+  template:
+    metadata:
+      labels:
+        app: fleetros-web
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.image }}:{{ .Values.tag }}"
+          ports:
+            - containerPort: {{ .Values.port }}
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleetros-web
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: fleetros-web
+  ports:
+    - port: {{ .Values.port }}
+      targetPort: {{ .Values.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fleetros-web
+  namespace: {{ .Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.tlsIssuer }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: {{ .Values.ingressClassName }}
+  tls:
+    - hosts: ["{{ .Values.ingressHost }}.{{ .Values.domain }}"]
+      secretName: fleetros-web-tls
+  rules:
+    - host: "{{ .Values.ingressHost }}.{{ .Values.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fleetros-web
+                port:
+                  number: {{ .Values.port }}
+{{- end }}

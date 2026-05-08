@@ -1,0 +1,13 @@
+---
+# Local dummy secrets — NOT encrypted, gitignored. Safe values for laptop testing.
+vault_postgres_password: "changeme"
+vault_keycloak_admin_password: "admin"
+vault_redis_password: ""
+vault_dockerhub_username: "so0n"
+vault_dockerhub_token: "dummy-local-token"
+vault_gitops_ssh_deploy_key: "dummy-local-key"
+vault_stripe_secret_key: "sk_test_dummy"
+vault_smtp_host: "mailpit"
+vault_smtp_port: 1025
+vault_smtp_user: ""
+vault_smtp_password: ""
