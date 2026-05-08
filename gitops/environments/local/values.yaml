@@ -11,6 +11,11 @@ data:
     persistence:
       size: 1Gi
 
+argocd:
+  ingress:
+    enabled: true
+    host: argocd        # https://argocd.fleetros.local
+
 platform:
   domain: fleetros.local
   mailpit:

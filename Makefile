@@ -87,6 +87,25 @@ local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
+LOCAL_HOSTS := app api portal reporting mail argocd
+local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
+	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
+	echo "$$VM_IP $$HOSTS"
+
+local-hosts-install: ## Install/refresh /etc/hosts entries for *.fleetros.local (sudo)
+	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
+	LINE="$$VM_IP $$HOSTS# fleetros-local"; \
+	echo "Updating /etc/hosts -> $$LINE"; \
+	sudo sed -i.bak '/# fleetros-local$$/d' /etc/hosts; \
+	echo "$$LINE" | sudo tee -a /etc/hosts >/dev/null; \
+	echo "Done. Try: https://app.fleetros.local"
+
+local-hosts-uninstall: ## Remove fleetros-local /etc/hosts entries (sudo)
+	sudo sed -i.bak '/# fleetros-local$$/d' /etc/hosts
+	@echo "Removed."
+
 local-reset: local-down local-up ## Wipe and recreate local VM
 
 local-down: ## Destroy local VM
