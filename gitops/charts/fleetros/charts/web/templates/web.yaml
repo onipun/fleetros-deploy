@@ -64,7 +64,11 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingressClassName }}
   tls:
-    - hosts: ["{{ .Values.ingressHost }}.{{ .Values.domain }}"]
+    - hosts:
+        - "{{ .Values.ingressHost }}.{{ .Values.domain }}"
+        {{- range .Values.extraHosts }}
+        - "{{ . }}.{{ $.Values.domain }}"
+        {{- end }}
       secretName: fleetros-web-tls
   rules:
     - host: "{{ .Values.ingressHost }}.{{ .Values.domain }}"
@@ -77,4 +81,16 @@ spec:
                 name: fleetros-web
                 port:
                   number: {{ .Values.port }}
+    {{- range .Values.extraHosts }}
+    - host: "{{ . }}.{{ $.Values.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fleetros-web
+                port:
+                  number: {{ $.Values.port }}
+    {{- end }}
 {{- end }}

@@ -9,4 +9,5 @@ tag: "latest"
 port: 3000
 replicas: 1
 ingressHost: app    # https://app.fleetros.local
+extraHosts: []      # additional subdomain prefixes (e.g. ["portal"]) routed to the same service
 env: {}

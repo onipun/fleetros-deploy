@@ -98,7 +98,9 @@ platform:
       image: so0n/car-rental-customer-portal-service
       tag: "latest"
       port: 8086
-      ingressHost: portal
+      # Backend API for the customer-portal frontend. portal.fleetros.local is
+      # taken by the Next.js portal UI; expose this on a different subdomain.
+      ingressHost: customer-api
       env:
         SPRING_PROFILES_ACTIVE: docker
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
@@ -131,9 +133,12 @@ web:
   tag: "latest"
   port: 3000
   domain: fleetros.local
-  ingressHost: app     # https://app.fleetros.local
+  ingressHost: app     # https://app.fleetros.local (dashboard mode)
+  extraHosts:
+    - portal           # https://portal.fleetros.local (customer portal mode)
   env:
     NEXT_PUBLIC_APP_URL: "https://app.fleetros.local"
+    NEXT_PUBLIC_PRIMARY_HOSTS: "app.fleetros.local"
     NEXT_PUBLIC_BRAND_NAME: "Fleetros"
     NEXT_PUBLIC_I18N_DEFAULT_LOCALE: "en"
     # Public (browser) URLs go through ingress
