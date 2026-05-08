@@ -35,7 +35,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
-        SPRING_DATASOURCE_USERNAME: postgres
         PRICING_SERVICE_BASE_URL: http://pricing.app.svc.cluster.local:8081
         PAYMENT_PLATFORM_URL: http://payment.app.svc.cluster.local:8085
         ONBOARDING_SERVICE_BASE_URL: http://onboarding.app.svc.cluster.local:8083
@@ -47,7 +46,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/payment_platform
-        SPRING_DATASOURCE_USERNAME: postgres
     onboarding:
       enabled: true
       image: so0n/car-rental-onboarding-service
@@ -56,7 +54,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/payment_platform
-        SPRING_DATASOURCE_USERNAME: postgres
     pricing:
       enabled: true
       image: so0n/car-rental-rental-pricing-service
@@ -65,7 +62,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
-        SPRING_DATASOURCE_USERNAME: postgres
     reporting:
       enabled: true
       image: so0n/car-rental-reporting-service
@@ -74,7 +70,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
-        SPRING_DATASOURCE_USERNAME: postgres
         BACKOFFICE_SERVICE_BASE_URL: http://backoffice.app.svc.cluster.local:8082
     customerportal:
       enabled: true
@@ -85,7 +80,6 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: docker
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
-        SPRING_DATASOURCE_USERNAME: postgres
         CUSTOMER_KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
         CUSTOMER_KEYCLOAK_REALM: carrental-customers
         SERVER_PORT: "8086"
