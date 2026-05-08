@@ -10,9 +10,10 @@ fleetros_namespaces:
 # Argo CD
 argocd_chart_version: "7.7.7"
 argocd_namespace: argocd
-# Local NodePort for the Argo CD UI (https). Reachable from the host at
-# https://<vm-ip>:<argocd_nodeport>. Must be in 30000-32767.
-argocd_nodeport: 30443
+# Local NodePort for the Argo CD UI. Reachable from the host at
+# http://<vm-ip>:<argocd_nodeport>. Argo is installed with server.insecure=true
+# (plain HTTP on 8080) so we expose the http port, not https. Must be 30000-32767.
+argocd_nodeport: 30080
 
 # Argo CD Image Updater
 argocd_image_updater_chart_version: "0.11.0"

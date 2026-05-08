@@ -74,10 +74,10 @@ local-test: ## Run 7-point validation suite
 local-argocd-ui: ## Print Argo CD UI URL + admin password (NodePort)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	PORT=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd get svc argocd-server \
-		-o jsonpath='{.spec.ports[?(@.port==443)].nodePort}'); \
+		-o jsonpath='{.spec.ports[?(@.port==80)].nodePort}'); \
 	PW=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd get secret argocd-initial-admin-secret \
 		-o jsonpath='{.data.password}' | base64 -d); \
-	echo "Argo CD UI: https://$$VM_IP:$$PORT"; \
+	echo "Argo CD UI: http://$$VM_IP:$$PORT"; \
 	echo "Username:   admin"; \
 	echo "Password:   $$PW"
 
