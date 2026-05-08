@@ -9,7 +9,7 @@ metadata:
   labels:
     app: {{ $name }}
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: {{ $svc.syncWave | default "2" | quote }}
 spec:
   replicas: {{ $svc.replicas | default $.Values.defaults.replicas }}
   selector:

@@ -62,6 +62,8 @@
       --namespace {{ argocd_namespace }} \
       --version {{ argocd_chart_version }} \
       --set configs.params."server\.insecure"=true \
+      --set server.service.type=NodePort \
+      --set server.service.nodePortHttps={{ argocd_nodeport }} \
       --wait --timeout 10m
   args:
     executable: /bin/bash

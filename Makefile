@@ -59,6 +59,22 @@ local-deploy: ## Apply Argo CD root app for local environment
 local-test: ## Run 7-point validation suite
 	@bash scripts/local-test.sh
 
+local-argocd-ui: ## Print Argo CD UI URL + admin password (NodePort)
+	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	PORT=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd get svc argocd-server \
+		-o jsonpath='{.spec.ports[?(@.port==443)].nodePort}'); \
+	PW=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd get secret argocd-initial-admin-secret \
+		-o jsonpath='{.data.password}' | base64 -d); \
+	echo "Argo CD UI: https://$$VM_IP:$$PORT"; \
+	echo "Username:   admin"; \
+	echo "Password:   $$PW"
+
+local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (Ctrl+C to stop)
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd port-forward svc/argocd-server 8443:443
+
+local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
+	multipass exec $(VM_NAME) -- sudo -E env KUBECONFIG=/etc/rancher/k3s/k3s.yaml k9s
+
 local-reset: local-down local-up ## Wipe and recreate local VM
 
 local-down: ## Destroy local VM
@@ -121,4 +137,5 @@ helm-template-prod:
 .PHONY: help local-up local-vm-up local-configure local-kubeconfig local-deploy local-test \
         local-reset local-down local-k3d-up local-k3d-down prod-configure prod-deploy prod-up \
         tofu-init tofu-plan tofu-apply tofu-destroy tofu-inventory secrets-edit-local \
-        secrets-edit-prod helm-lint helm-template-local helm-template-prod
+        secrets-edit-prod helm-lint helm-template-local helm-template-prod \
+        local-argocd-ui local-argocd-portforward local-k9s

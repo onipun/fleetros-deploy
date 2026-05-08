@@ -26,6 +26,23 @@
     executable: /bin/bash
   changed_when: false
 
+- name: Detect host architecture for k9s download
+  ansible.builtin.set_fact:
+    k9s_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
+
+- name: Install k9s (cluster TUI for debugging)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    K9S_VERSION="{{ k9s_version | default('v0.32.7') }}"
+    cd /tmp
+    curl -fsSL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_{{ k9s_arch }}.tar.gz" \
+      | tar -xz k9s
+    install -m 0755 /tmp/k9s /usr/local/bin/k9s
+    rm -f /tmp/k9s
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/k9s
+
 - name: Configure UFW (prod only — local VM left open for multipass mDNS)
   when: fleetros_env == "prod"
   block:
