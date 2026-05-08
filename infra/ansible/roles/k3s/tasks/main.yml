@@ -29,6 +29,23 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
+- name: Ensure ~/.kube exists for ubuntu user (so k9s/kubectl work without sudo)
+  ansible.builtin.file:
+    path: /home/ubuntu/.kube
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0700"
+
+- name: Copy k3s kubeconfig to ubuntu's ~/.kube/config
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/ubuntu/.kube/config
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+    remote_src: true
+
 - name: Fetch kubeconfig to control node
   ansible.builtin.fetch:
     src: /etc/rancher/k3s/k3s.yaml

@@ -40,6 +40,18 @@ local-vm-up: ## Launch multipass VM (idempotent)
 		multipass launch --name $(VM_NAME) --cpus $(VM_CPUS) --memory $(VM_MEMORY) --disk $(VM_DISK) $(VM_IMAGE); \
 	fi
 	@multipass info $(VM_NAME) | grep -E 'IPv4'
+	@$(MAKE) --no-print-directory local-vm-ssh-trust
+
+local-vm-ssh-trust: ## Inject host SSH pubkey into VM's ubuntu user (idempotent)
+	@PUBKEY_FILE=$$( [ -f $(HOME)/.ssh/id_ed25519.pub ] && echo $(HOME)/.ssh/id_ed25519.pub || echo $(HOME)/.ssh/id_rsa.pub ); \
+	if [ ! -f "$$PUBKEY_FILE" ]; then \
+		echo "ERROR: no SSH pubkey at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub. Generate with: ssh-keygen -t ed25519"; exit 1; \
+	fi; \
+	PUB=$$(cat $$PUBKEY_FILE); \
+	multipass exec $(VM_NAME) -- bash -c "install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.ssh && touch /home/ubuntu/.ssh/authorized_keys && chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys && chmod 600 /home/ubuntu/.ssh/authorized_keys && grep -qxF '$$PUB' /home/ubuntu/.ssh/authorized_keys || echo '$$PUB' >> /home/ubuntu/.ssh/authorized_keys"
+	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	ssh-keygen -R $$VM_IP >/dev/null 2>&1 || true; \
+	echo "SSH trust seeded for ubuntu@$$VM_IP"
 
 local-configure: ## Run Ansible site.yml against local VM
 	@test -f $(ANSIBLE_DIR)/.vault-pass.local || (echo "ERROR: $(ANSIBLE_DIR)/.vault-pass.local missing. Run: echo localdummypass > $(ANSIBLE_DIR)/.vault-pass.local" && exit 1)
@@ -73,7 +85,7 @@ local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd port-forward svc/argocd-server 8443:443
 
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
-	multipass exec $(VM_NAME) -- sudo -E env KUBECONFIG=/etc/rancher/k3s/k3s.yaml k9s
+	multipass exec $(VM_NAME) -- k9s
 
 local-reset: local-down local-up ## Wipe and recreate local VM
 
@@ -138,4 +150,4 @@ helm-template-prod:
         local-reset local-down local-k3d-up local-k3d-down prod-configure prod-deploy prod-up \
         tofu-init tofu-plan tofu-apply tofu-destroy tofu-inventory secrets-edit-local \
         secrets-edit-prod helm-lint helm-template-local helm-template-prod \
-        local-argocd-ui local-argocd-portforward local-k9s
+        local-argocd-ui local-argocd-portforward local-k9s local-vm-ssh-trust
