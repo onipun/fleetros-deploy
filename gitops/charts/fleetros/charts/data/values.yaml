@@ -29,3 +29,11 @@ keycloak:
   port: 8080
   persistence:
     size: 2Gi
+  # Browser-facing hostname. When set, Keycloak generates issuer / OIDC URLs
+  # using this host (so login redirects work). Leave empty to fall back to
+  # KC_HOSTNAME_STRICT=false (in-cluster usage only).
+  publicHostname: ""
+  ingress:
+    enabled: false
+  realmImport:
+    enabled: false

@@ -1,4 +1,14 @@
 {{- if .Values.keycloak.enabled }}
+{{- if .Values.keycloak.realmImport.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-import
+  namespace: {{ .Values.namespace }}
+data:
+{{ (.Files.Glob "files/realms/*.json").AsConfig | indent 2 }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,11 +27,21 @@ spec:
     metadata:
       labels:
         app: keycloak
+      annotations:
+        {{- if .Values.keycloak.realmImport.enabled }}
+        # Roll the pod when realm JSON changes so Keycloak re-imports.
+        checksum/realms: {{ (.Files.Glob "files/realms/*.json").AsConfig | sha256sum }}
+        {{- end }}
     spec:
       containers:
         - name: keycloak
           image: "{{ .Values.keycloak.image }}:{{ .Values.keycloak.tag }}"
-          args: ["start-dev", "--features=token-exchange,admin-fine-grained-authz"]
+          args:
+            - "start-dev"
+            - "--features=token-exchange,admin-fine-grained-authz"
+            {{- if .Values.keycloak.realmImport.enabled }}
+            - "--import-realm"
+            {{- end }}
           ports:
             - containerPort: {{ .Values.keycloak.port }}
           envFrom:
@@ -42,25 +62,50 @@ spec:
                 secretKeyRef:
                   name: postgres-creds
                   key: POSTGRES_PASSWORD
+            {{- if .Values.keycloak.publicHostname }}
+            # Keycloak generates issuer/discovery URLs from these. They MUST be
+            # reachable from the user's browser (not the in-cluster service DNS).
+            - name: KC_HOSTNAME
+              value: {{ .Values.keycloak.publicHostname | quote }}
+            - name: KC_HOSTNAME_STRICT
+              value: "true"
+            - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+              value: "false"
+            - name: KC_PROXY
+              value: "edge"
+            {{- else }}
             - name: KC_HOSTNAME_STRICT
               value: "false"
+            {{- end }}
             - name: KC_HTTP_ENABLED
               value: "true"
             - name: KC_HEALTH_ENABLED
               value: "true"
+          {{- if .Values.keycloak.realmImport.enabled }}
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health/ready
               port: {{ .Values.keycloak.port }}
             initialDelaySeconds: 60
             periodSeconds: 15
-            failureThreshold: 20
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /health/live
               port: {{ .Values.keycloak.port }}
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
+      {{- if .Values.keycloak.realmImport.enabled }}
+      volumes:
+        - name: realm-import
+          configMap:
+            name: keycloak-realm-import
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -73,4 +118,32 @@ spec:
   ports:
     - port: {{ .Values.keycloak.port }}
       targetPort: {{ .Values.keycloak.port }}
+{{- if and .Values.keycloak.ingress .Values.keycloak.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: {{ .Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.tlsIssuer | default "fleetros-issuer" }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: {{ .Values.ingressClassName | default "traefik" }}
+  tls:
+    - hosts: ["{{ .Values.keycloak.publicHostname }}"]
+      secretName: keycloak-tls
+  rules:
+    - host: {{ .Values.keycloak.publicHostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: {{ .Values.keycloak.port }}
+{{- end }}
 {{- end }}

@@ -87,7 +87,7 @@ local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
-LOCAL_HOSTS := app api portal reporting mail argocd customer-api
+LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
