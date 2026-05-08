@@ -73,6 +73,10 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
+        # Reporting reads backoffice schema; do NOT let it manage DDL (its
+        # local Account/User entities differ from backoffice and create
+        # conflicting `account` table + FK on `users.account_id`).
+        SPRING_JPA_HIBERNATE_DDL_AUTO: none
         BACKOFFICE_SERVICE_BASE_URL: http://backoffice.app.svc.cluster.local:8082
     customerportal:
       enabled: true
