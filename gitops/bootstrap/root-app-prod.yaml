@@ -38,7 +38,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: "git@github.com:YOUR_ORG/fleetros-deploy.git"
+    repoURL: "git@github.com:onipun/fleetros-deploy.git"
     targetRevision: HEAD
     path: gitops/charts/fleetros
     helm:

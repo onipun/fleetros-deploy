@@ -9,7 +9,7 @@
   ansible.builtin.shell: |
     curl -sfL https://get.k3s.io | \
       INSTALL_K3S_VERSION={{ k3s_version }} \
-      INSTALL_K3S_EXEC="server --disable=servicelb --write-kubeconfig-mode=644 --tls-san={{ ansible_host }}" \
+      INSTALL_K3S_EXEC="server {{ '--disable=servicelb ' if fleetros_env == 'prod' else '' }}--write-kubeconfig-mode=644 --tls-san={{ ansible_host }}" \
       sh -
   args:
     executable: /bin/bash
