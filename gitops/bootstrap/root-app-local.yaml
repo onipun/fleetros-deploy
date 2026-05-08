@@ -53,3 +53,11 @@ spec:
     - group: ""
       kind: Secret
       jsonPointers: ["/data"]
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/persistentVolumeClaimRetentionPolicy
+        - /spec/podManagementPolicy
+        - /spec/revisionHistoryLimit
+        - /spec/updateStrategy
+        - /spec/volumeClaimTemplates
