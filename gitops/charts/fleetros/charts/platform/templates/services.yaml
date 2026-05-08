@@ -51,7 +51,7 @@ spec:
             - secretRef:
                 name: app-secrets
           resources:
-            {{- toYaml $.Values.defaults.resources | nindent 12 }}
+            {{- toYaml ($svc.resources | default $.Values.defaults.resources) | nindent 12 }}
           startupProbe:
             tcpSocket:
               port: {{ $svc.port }}

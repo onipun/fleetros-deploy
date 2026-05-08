@@ -32,6 +32,9 @@ platform:
       tag: "latest"     # local: floating dev tag allowed
       port: 8082
       ingressHost: api
+      resources:
+        requests: { cpu: 100m, memory: 512Mi }
+        limits:   { cpu: "1",  memory: 1536Mi }
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
