@@ -1,0 +1,92 @@
+{{- if .Values.mailpit.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: mailpit
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailpit
+  template:
+    metadata:
+      labels:
+        app: mailpit
+    spec:
+      containers:
+        - name: mailpit
+          image: "{{ .Values.mailpit.image }}:{{ .Values.mailpit.tag }}"
+          imagePullPolicy: {{ .Values.defaults.imagePullPolicy }}
+          env:
+            - name: MP_SMTP_AUTH_ACCEPT_ANY
+              value: "true"
+            - name: MP_SMTP_AUTH_ALLOW_INSECURE
+              value: "true"
+          ports:
+            - name: smtp
+              containerPort: 1025
+            - name: http
+              containerPort: 8025
+          readinessProbe:
+            httpGet:
+              path: /api/v1/info
+              port: 8025
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 1025
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: mailpit
+  ports:
+    - name: smtp
+      port: 1025
+      targetPort: 1025
+    - name: http
+      port: 8025
+      targetPort: 8025
+{{- if .Values.mailpit.ingressHost }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mailpit
+  namespace: {{ .Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.tlsIssuer }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: {{ .Values.ingressClassName }}
+  tls:
+    - hosts: ["{{ .Values.mailpit.ingressHost }}.{{ .Values.domain }}"]
+      secretName: mailpit-tls
+  rules:
+    - host: "{{ .Values.mailpit.ingressHost }}.{{ .Values.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mailpit
+                port:
+                  number: 8025
+{{- end }}
+{{- end }}

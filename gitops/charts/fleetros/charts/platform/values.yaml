@@ -18,3 +18,9 @@ defaults:
     KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
 
 services: {}   # populated by parent (umbrella) values
+
+mailpit:
+  enabled: false       # off by default; enable in local overlay
+  image: axllent/mailpit
+  tag: "latest"
+  ingressHost: ""      # e.g. "mail" → https://mail.fleetros.local for the web UI

@@ -13,6 +13,9 @@ data:
 
 platform:
   domain: fleetros.local
+  mailpit:
+    enabled: true
+    ingressHost: mail   # https://mail.fleetros.local for the web UI
   defaults:
     replicas: 1
     resources:
@@ -118,10 +121,37 @@ platform:
         NOTIFICATION_IOS_DRY_RUN: "true"
 
 web:
-  enabled: false       # disabled locally until image is published
-  domain: fleetros.local
+  enabled: true
+  image: so0n/car-rental-backoffice-dashboard
   tag: "latest"
-  ingressHost: app
+  port: 3000
+  domain: fleetros.local
+  ingressHost: app     # https://app.fleetros.local
   env:
+    NEXT_PUBLIC_APP_URL: "https://app.fleetros.local"
+    NEXT_PUBLIC_BRAND_NAME: "Fleetros"
+    NEXT_PUBLIC_I18N_DEFAULT_LOCALE: "en"
+    # Public (browser) URLs go through ingress
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"
+    NEXT_PUBLIC_API_URL: "https://api.fleetros.local"
+    NEXT_PUBLIC_REPORTING_API_URL: "https://reporting.fleetros.local"
+    NEXT_PUBLIC_SITE_EDITOR_URL: "https://portal.fleetros.local"
+    NEXT_PUBLIC_ENABLE_ONBOARDING: "true"
+    NEXT_PUBLIC_ENABLE_NOTIFICATIONS: "true"
+    NEXT_PUBLIC_ENABLE_COMMAND_PALETTE: "true"
+    # Server-side (in-cluster) URLs hit services directly
     NEXTAUTH_URL: "https://app.fleetros.local"
+    BACKEND_API_URL: "http://backoffice.app.svc.cluster.local:8082"
+    BACKEND_USERINFO_ENDPOINT: "http://backoffice.app.svc.cluster.local:8082/api/auth/me"
+    # Keycloak OAuth (browser-facing endpoints; replace realm/client when known)
+    KEYCLOAK_ISSUER: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice"
+    KEYCLOAK_CLIENT_ID: "backoffice-client"
+    KEYCLOAK_CLIENT_SECRET: "kypYMXtLSCxDjw8D6kNUSTwWigJEkqiF"
+    KEYCLOAK_AUTHORIZATION_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/auth"
+    KEYCLOAK_TOKEN_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/token"
+    KEYCLOAK_USERINFO_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/userinfo"
+    KEYCLOAK_JWKS_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/certs"
+    KEYCLOAK_END_SESSION_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/logout"
+    OAUTH_CALLBACK_URL: "https://app.fleetros.local/api/auth/callback/keycloak"
+    SESSION_SECRET: "complex_password_at_least_32_characters_long_for_local_dev_only"
+    CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local"
