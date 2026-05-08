@@ -98,7 +98,24 @@ platform:
         CUSTOMER_KEYCLOAK_REALM: carrental-customers
         SERVER_PORT: "8086"
     notification:
-      enabled: false   # mailpit only locally; notification svc disabled
+      enabled: true
+      image: so0n/car-rental-notification-service
+      tag: "latest"
+      port: 8087   # default 8086 collides with customerportal; override via SERVER_PORT
+      env:
+        SPRING_PROFILES_ACTIVE: docker
+        SERVER_PORT: "8087"
+        # Stateless (no DB). Uses Redis + Mailpit + Firebase (dry-run).
+        EMAIL_ENABLED: "true"
+        SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
+        SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
+        NOTIFICATION_FIREBASE_ENABLED: "true"
+        NOTIFICATION_FIREBASE_CREDENTIALS_FILE: "classpath:firebase/firebase-service-account-sandbox.json"
+        NOTIFICATION_FIREBASE_PROJECT_ID: "fleetros-sandbox"
+        NOTIFICATION_ANDROID_ENABLED: "true"
+        NOTIFICATION_ANDROID_DRY_RUN: "true"
+        NOTIFICATION_IOS_ENABLED: "true"
+        NOTIFICATION_IOS_DRY_RUN: "true"
 
 web:
   enabled: false       # disabled locally until image is published
