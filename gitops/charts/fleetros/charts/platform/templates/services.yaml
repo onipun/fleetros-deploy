@@ -41,6 +41,12 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef: { name: postgres-creds, key: POSTGRES_PASSWORD }
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef: { name: postgres-creds, key: POSTGRES_USER }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-creds, key: POSTGRES_PASSWORD }
           envFrom:
             - secretRef:
                 name: app-secrets
