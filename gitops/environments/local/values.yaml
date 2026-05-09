@@ -61,6 +61,11 @@ platform:
         PRICING_SERVICE_BASE_URL: http://pricing.app.svc.cluster.local:8081
         PAYMENT_PLATFORM_URL: http://payment.app.svc.cluster.local:8085
         ONBOARDING_SERVICE_BASE_URL: http://onboarding.app.svc.cluster.local:8083
+        # Browser CORS: dashboard at app.fleetros.local calls api.fleetros.local.
+        # `cors.allowed-origins` in application-dev.yml does NOT include the
+        # ingress host, so without this override Spring Security 403s the
+        # OPTIONS preflight for /api/registration/master-account etc.
+        CORS_ALLOWED_ORIGINS: "https://app.fleetros.local,https://portal.fleetros.local,http://localhost:3000"
     payment:
       enabled: true
       image: so0n/car-rental-payment-service
@@ -103,6 +108,8 @@ platform:
         SPRING_JPA_HIBERNATE_DDL_AUTO: none
         SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: none
         BACKOFFICE_SERVICE_BASE_URL: http://backoffice.app.svc.cluster.local:8082
+        # Browser CORS: dashboard hits reporting.fleetros.local directly.
+        CORS_ALLOWED_ORIGINS: "https://app.fleetros.local,https://portal.fleetros.local,http://localhost:3000"
     customerportal:
       enabled: true
       image: so0n/car-rental-customer-portal-service
@@ -117,6 +124,8 @@ platform:
         CUSTOMER_KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
         CUSTOMER_KEYCLOAK_REALM: carrental-customers
         SERVER_PORT: "8086"
+        # Browser CORS: portal/app call customer-api.fleetros.local.
+        CUSTOMER_PORTAL_CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local,https://app.fleetros.local,http://localhost:3000"
     notification:
       enabled: true
       image: so0n/car-rental-notification-service
