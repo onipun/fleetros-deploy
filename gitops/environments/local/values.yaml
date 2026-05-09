@@ -167,6 +167,8 @@ web:
     KEYCLOAK_ISSUER: "https://auth.fleetros.local/realms/backoffice"
     KEYCLOAK_CLIENT_ID: "backoffice-client"
     KEYCLOAK_CLIENT_SECRET: "kypYMXtLSCxDjw8D6kNUSTwWigJEkqiF"
+    AUTH_REDIRECT_URI: "https://api.fleetros.local/api/auth/callback"
+    AUTH_POST_LOGOUT_REDIRECT_URI: "https://app.fleetros.local/login"
     # Browser-facing endpoints (must be a hostname the user's browser can resolve)
     KEYCLOAK_AUTHORIZATION_ENDPOINT: "https://auth.fleetros.local/realms/backoffice/protocol/openid-connect/auth"
     KEYCLOAK_END_SESSION_ENDPOINT: "https://auth.fleetros.local/realms/backoffice/protocol/openid-connect/logout"
