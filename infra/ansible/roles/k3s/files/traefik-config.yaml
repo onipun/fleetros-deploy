@@ -1,0 +1,23 @@
+# Reconfigure the K3s-bundled Traefik to expose its dashboard.
+# K3s watches /var/lib/rancher/k3s/server/manifests/ and applies HelmChartConfig
+# overrides to its bundled Helm charts.
+#
+# - --api.dashboard=true    : enable the Traefik dashboard handler
+# - --api.insecure=true     : serve the dashboard on the `traefik` entrypoint (:9000)
+#                             (safe for local; we still front it with TLS via Ingress)
+# - ports.traefik.expose    : add port 9000 to the LoadBalancer service so an
+#                             Ingress can reach the dashboard
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    additionalArguments:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+    ports:
+      traefik:
+        expose:
+          default: true

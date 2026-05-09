@@ -84,10 +84,13 @@ local-argocd-ui: ## Print Argo CD UI URL + admin password (NodePort)
 local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (Ctrl+C to stop)
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n argocd port-forward svc/argocd-server 8443:443
 
+local-traefik-portforward: ## Port-forward Traefik dashboard to http://localhost:9000/dashboard/ (Ctrl+C to stop)
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n kube-system port-forward svc/traefik 9000:9000
+
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
-LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth
+LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
@@ -169,4 +172,4 @@ helm-template-prod:
         local-reset local-down local-k3d-up local-k3d-down prod-configure prod-deploy prod-up \
         tofu-init tofu-plan tofu-apply tofu-destroy tofu-inventory secrets-edit-local \
         secrets-edit-prod helm-lint helm-template-local helm-template-prod \
-        local-argocd-ui local-argocd-portforward local-k9s local-vm-ssh-trust
+        local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust

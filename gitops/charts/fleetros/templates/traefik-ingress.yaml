@@ -1,0 +1,28 @@
+{{- if .Values.traefik.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-dashboard
+  namespace: kube-system
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.global.tlsIssuer | quote }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ printf "%s.%s" .Values.traefik.ingress.host .Values.global.domain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: traefik
+                port:
+                  number: 9000
+  tls:
+    - hosts:
+        - {{ printf "%s.%s" .Values.traefik.ingress.host .Values.global.domain | quote }}
+      secretName: traefik-dashboard-tls
+{{- end }}

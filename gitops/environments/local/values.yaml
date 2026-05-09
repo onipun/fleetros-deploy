@@ -21,6 +21,11 @@ argocd:
     enabled: true
     host: argocd        # https://argocd.fleetros.local
 
+traefik:
+  ingress:
+    enabled: true
+    host: traefik       # https://traefik.fleetros.local
+
 platform:
   domain: fleetros.local
   mailpit:

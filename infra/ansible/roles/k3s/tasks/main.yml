@@ -5,6 +5,22 @@
     path: /usr/local/bin/k3s
   register: k3s_binary
 
+- name: Ensure K3s manifests directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Drop Traefik HelmChartConfig (enables dashboard + exposes :9000)
+  ansible.builtin.copy:
+    src: traefik-config.yaml
+    dest: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install K3s (single-node)
   ansible.builtin.shell: |
     curl -sfL https://get.k3s.io | \

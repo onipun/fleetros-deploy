@@ -117,3 +117,11 @@ argocd:
   ingress:
     enabled: false
     host: argocd
+
+# Traefik dashboard ingress (umbrella). Local exposes it at https://traefik.fleetros.local
+# Requires the K3s HelmChartConfig in infra/ansible/roles/k3s/files/traefik-config.yaml
+# which enables --api.dashboard=true and exposes port 9000 on the traefik service.
+traefik:
+  ingress:
+    enabled: false
+    host: traefik
