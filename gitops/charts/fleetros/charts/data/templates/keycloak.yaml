@@ -63,15 +63,17 @@ spec:
                   name: postgres-creds
                   key: POSTGRES_PASSWORD
             {{- if .Values.keycloak.publicHostname }}
-            # Keycloak generates issuer/discovery URLs from these. They MUST be
+            # Keycloak generates issuer/discovery URLs from this. It MUST be
             # reachable from the user's browser (not the in-cluster service DNS).
-            - name: KC_HOSTNAME
-              value: {{ .Values.keycloak.publicHostname | quote }}
-            # Pin the absolute frontend URL so the `iss` claim is always
-            # https://<host> — even when requests come in over plain HTTP via
-            # the in-cluster Service (e.g. server-side token refresh from the
-            # Next.js dashboard pod). Without this, browser-issued tokens have
-            # iss=https://… but refresh calls compute iss=http://… → invalid_grant.
+            # We set the absolute frontend URL (not just KC_HOSTNAME) so the
+            # `iss` claim is always https://<host> — even when requests come in
+            # over plain HTTP via the in-cluster Service (e.g. server-side
+            # token refresh from the Next.js dashboard pod). Without this,
+            # browser-issued tokens have iss=https://… but refresh calls
+            # compute iss=http://… → invalid_grant.
+            # NOTE: KC_HOSTNAME and KC_HOSTNAME_URL are mutually exclusive in
+            # Keycloak 23 — pick one. KC_HOSTNAME_URL wins because it pins the
+            # scheme too.
             - name: KC_HOSTNAME_URL
               value: {{ printf "https://%s" .Values.keycloak.publicHostname | quote }}
             - name: KC_HOSTNAME_STRICT
