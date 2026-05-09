@@ -2,6 +2,31 @@
 
 Infrastructure and GitOps configuration for the Fleetros stack. See `/memories/session/plan.md` in the agent workspace for the full architecture rationale.
 
+## Architecture Flow
+
+This repository uses a multi-stage approach to go from raw hardware to deployed applications:
+
+```mermaid
+flowchart TD
+    subgraph Provisioning [1. Hardware Provisioning]
+        Tofu[OpenTofu] -->|Secures VPS & passes IP| VPS[Raw VPS]
+    end
+
+    subgraph Bootstrapping [2. OS & Cluster Bootstrapping]
+        Ansible[Ansible Playbook] -->|Installs K3s & Argo CD| VPS
+    end
+
+    subgraph GitOps [3. Application Deployment]
+        Argo[Argo CD] -->|Pulls config| Git[Git Repository]
+        Git -->|Umbrella Chart| Helm[Helm Templating]
+        Helm -->|Generates Manifests| K8s[K3s Kubernetes]
+        Argo -->|Applies Config| K8s
+    end
+
+    Provisioning --> Bootstrapping
+    Bootstrapping --> GitOps
+```
+
 ## Layout
 
 ```
@@ -69,3 +94,40 @@ make prod-deploy     # apply Argo CD root app pointing at environments/prod/
 - **Argo CD Image Updater** on the VPS polls Docker Hub every 2 min and bumps tags in the gitops repo.
 - **Argo CD** syncs gitops repo → cluster every 3 min.
 - **Tag convention**: semver `vMAJOR.MINOR.PATCH` for prod overlay; `main-<sha>` allowed in local overlay.
+
+## Adding a New Service
+
+To add a new microservice to the deployment stack, you need to modify three configuration areas:
+
+**1. Define the service defaults**  
+In `gitops/charts/fleetros/values.yaml`, add your service under `platform.services`:
+```yaml
+    newservice:
+      enabled: true
+      image: so0n/car-rental-new-service
+      tag: "latest"
+      port: 8080
+```
+
+**2. Inject Environment Variables and Ingress (Per Environment)**  
+In `gitops/environments/local/values.yaml` (and similarly for `prod`), override the configuration with environment-specific properties:
+```yaml
+    newservice:
+      ingressHost: new-api # Exposes via https://new-api.fleetros.local
+      env:
+        SPRING_PROFILES_ACTIVE: dev
+        CUSTOM_API_KEY: "your-secret-key"
+```
+
+**3. Enable Auto-Updates (Optional)**  
+If you want Argo CD Image Updater to automatically deploy new tags for this service, add the annotations in `gitops/bootstrap/root-app-local.yaml` (and `root-app-prod.yaml`):
+```yaml
+    argocd-image-updater.argoproj.io/image-list: |
+      ...,
+      newservice=so0n/car-rental-new-service
+    argocd-image-updater.argoproj.io/newservice.update-strategy: latest
+    argocd-image-updater.argoproj.io/newservice.allow-tags: "regexp:^main-.+"
+```
+
+**4. Commit & Push to git repo
+to let the argo take the changes, commit the code change and push to the git repo. Argo will automatically pickup the changes and do deployment.
