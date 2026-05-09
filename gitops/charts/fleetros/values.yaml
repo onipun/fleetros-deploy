@@ -21,11 +21,10 @@ data:
   enabled: true
   postgres:
     enabled: true
-    image: postgres
-    tag: "16-alpine"
+    majorVersion: 16
+    instances: 1
     persistence:
       size: 10Gi
-    initScriptsConfigMap: postgres-init   # created out-of-band or via this chart
   redis:
     enabled: true
     image: redis
@@ -117,6 +116,15 @@ argocd:
   ingress:
     enabled: false
     host: argocd
+
+# StackGres Web UI ingress (umbrella). Backend = stackgres-restapi:8080
+# (HTTP port enabled by the operator's `adminui.service.exposeHTTP.enabled`
+# flag set during Ansible bootstrap).
+stackgres:
+  ingress:
+    enabled: false
+    host: stackgres
+    servicePort: 8080
 
 # Traefik dashboard ingress (umbrella). Local exposes it at https://traefik.fleetros.local
 # Requires the K3s HelmChartConfig in infra/ansible/roles/k3s/files/traefik-config.yaml

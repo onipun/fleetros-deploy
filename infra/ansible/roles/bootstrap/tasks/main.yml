@@ -21,6 +21,7 @@
   ansible.builtin.shell: |
     helm repo add jetstack https://charts.jetstack.io
     helm repo add argo https://argoproj.github.io/argo-helm
+    helm repo add stackgres-charts https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/
     helm repo update
   args:
     executable: /bin/bash
@@ -39,6 +40,68 @@
     executable: /bin/bash
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# ---------------------------------------------------------------------------
+# Local-only: import the mkcert root CA (from the developer's host machine)
+# into the cluster as a TLS Secret so cert-manager can sign per-host certs
+# from a CA the browser already trusts.
+#
+# Requires `mkcert` on the host AND `mkcert -install` to have been run once
+# (so the CA is in the OS/browser trust store).
+# ---------------------------------------------------------------------------
+- name: Locate mkcert CAROOT on the operator's host
+  ansible.builtin.command: mkcert -CAROOT
+  register: mkcert_caroot
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: fleetros_env == "local"
+
+- name: Slurp mkcert root CA cert from host
+  ansible.builtin.slurp:
+    src: "{{ mkcert_caroot.stdout }}/rootCA.pem"
+  register: mkcert_ca_cert
+  delegate_to: localhost
+  become: false
+  when: fleetros_env == "local"
+
+- name: Slurp mkcert root CA key from host
+  ansible.builtin.slurp:
+    src: "{{ mkcert_caroot.stdout }}/rootCA-key.pem"
+  register: mkcert_ca_key
+  delegate_to: localhost
+  become: false
+  when: fleetros_env == "local"
+
+- name: Render mkcert-ca Secret
+  ansible.builtin.copy:
+    dest: /tmp/mkcert-ca-secret.yaml
+    mode: "0600"
+    content: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: mkcert-ca
+        namespace: {{ cert_manager_namespace }}
+      type: kubernetes.io/tls
+      data:
+        tls.crt: {{ mkcert_ca_cert.content }}
+        tls.key: {{ mkcert_ca_key.content }}
+  when: fleetros_env == "local"
+
+- name: Apply mkcert-ca Secret
+  ansible.builtin.shell: kubectl apply -f /tmp/mkcert-ca-secret.yaml
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: fleetros_env == "local"
+  changed_when: false
+
+- name: Remove rendered mkcert-ca file
+  ansible.builtin.file:
+    path: /tmp/mkcert-ca-secret.yaml
+    state: absent
 
 - name: Apply self-signed ClusterIssuer (local) or LE issuer template (prod)
   ansible.builtin.template:
@@ -76,6 +139,28 @@
       --namespace {{ argocd_namespace }} \
       --version {{ argocd_image_updater_chart_version }} \
       --wait --timeout 5m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# ---------------------------------------------------------------------------
+# StackGres: PostgreSQL operator. Bundles Patroni HA, pgBouncer, Prometheus
+# exporters and a Grafana dashboard out of the box, plus a Web UI.
+#
+# The operator must exist BEFORE Argo CD applies the umbrella chart, because
+# the chart ships SGCluster / SGScript custom resources that the operator's
+# CRDs must already be registered for.
+# ---------------------------------------------------------------------------
+- name: Install StackGres operator
+  ansible.builtin.shell: |
+    helm upgrade --install stackgres-operator stackgres-charts/stackgres-operator \
+      --namespace {{ stackgres_namespace }} \
+      --create-namespace \
+      --version {{ stackgres_chart_version }} \
+      --set adminui.service.exposeHTTP.enabled=true \
+      --set adminui.service.exposeHTTP.port=8080 \
+      --wait --timeout 10m
   args:
     executable: /bin/bash
   environment:

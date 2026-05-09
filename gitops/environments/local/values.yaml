@@ -7,6 +7,8 @@ data:
   postgres:
     persistence:
       size: 5Gi   # smaller for laptop
+    cpu: "250m"
+    memory: "512Mi"
   keycloak:
     persistence:
       size: 1Gi
@@ -20,6 +22,11 @@ argocd:
   ingress:
     enabled: true
     host: argocd        # https://argocd.fleetros.local
+
+stackgres:
+  ingress:
+    enabled: true
+    host: stackgres     # https://stackgres.fleetros.local
 
 traefik:
   ingress:

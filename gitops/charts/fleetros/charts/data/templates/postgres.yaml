@@ -1,86 +1,127 @@
 {{- if .Values.postgres.enabled }}
-apiVersion: v1
-kind: ConfigMap
+# ----------------------------------------------------------------------------
+# StackGres SGCluster — managed Postgres with built-in Patroni HA, pgBouncer,
+# Prometheus exporters and Grafana dashboards. Replaces the previous raw
+# StatefulSet.
+#
+# The cluster is named `postgres`, so the primary read/write Service stays at
+# `postgres.data.svc.cluster.local:5432` and no application config has to
+# change.
+#
+# Credentials are pulled from the Ansible-seeded `postgres-creds` Secret.
+# Apps still read POSTGRES_USER/POSTGRES_PASSWORD from the same Secret, but
+# StackGres reads its own keys (superuser-*, replication-*, authenticator-*).
+# ----------------------------------------------------------------------------
+apiVersion: stackgres.io/v1
+kind: SGInstanceProfile
+metadata:
+  name: postgres-profile
+  namespace: {{ .Values.namespace }}
+spec:
+  cpu: "{{ .Values.postgres.cpu | default "500m" }}"
+  memory: "{{ .Values.postgres.memory | default "1Gi" }}"
+---
+apiVersion: stackgres.io/v1
+kind: SGPostgresConfig
+metadata:
+  name: postgres-config
+  namespace: {{ .Values.namespace }}
+spec:
+  postgresVersion: "{{ .Values.postgres.majorVersion | default 16 }}"
+  postgresql.conf:
+    shared_buffers: "256MB"
+    max_connections: "200"
+---
+apiVersion: stackgres.io/v1
+kind: SGPoolingConfig
+metadata:
+  name: postgres-pooling
+  namespace: {{ .Values.namespace }}
+spec:
+  pgBouncer:
+    pgbouncer.ini:
+      pgbouncer:
+        pool_mode: session
+        max_client_conn: "1000"
+        default_pool_size: "50"
+---
+{{- if .Values.postgres.databases }}
+apiVersion: stackgres.io/v1
+kind: SGScript
 metadata:
   name: postgres-init
   namespace: {{ .Values.namespace }}
-data:
-  init-databases.sh: |
-    #!/bin/bash
-    set -e
-    for db in {{ join " " .Values.postgres.databases }}; do
-      echo "Creating database: $db"
-      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -tc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 || \
-        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -c "CREATE DATABASE \"$db\""
-    done
+spec:
+  continueOnError: true
+  scripts:
+{{- range $db := .Values.postgres.databases }}
+    - name: create-{{ $db }}
+      # CREATE DATABASE cannot run inside a transaction block, so we drive it
+      # from a DO block guard via a plpgsql function. Simpler: leverage
+      # SGScript's continueOnError and run the bare statement; on subsequent
+      # reconciles "already exists" is logged and ignored.
+      wrapInTransaction: read-write
+      script: |
+        SELECT 'CREATE DATABASE "{{ $db }}"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ $db }}')\gexec
+{{- end }}
 ---
-apiVersion: apps/v1
-kind: StatefulSet
+{{- end }}
+apiVersion: stackgres.io/v1
+kind: SGCluster
 metadata:
   name: postgres
   namespace: {{ .Values.namespace }}
-  labels:
-    app: postgres
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  serviceName: postgres
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-        - name: postgres
-          image: "{{ .Values.postgres.image }}:{{ .Values.postgres.tag }}"
-          ports:
-            - containerPort: {{ .Values.postgres.port }}
-          envFrom:
-            - secretRef:
-                name: postgres-creds
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-            - name: init
-              mountPath: /docker-entrypoint-initdb.d
-          readinessProbe:
-            exec:
-              command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 30
-            periodSeconds: 30
-      volumes:
-        - name: init
-          configMap:
-            name: postgres-init
-            defaultMode: 0755
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: {{ .Values.postgres.persistence.size }}
+  instances: {{ .Values.postgres.instances | default 1 }}
+  postgres:
+    version: "{{ .Values.postgres.majorVersion | default 16 }}"
+  sgInstanceProfile: postgres-profile
+  configurations:
+    sgPostgresConfig: postgres-config
+    sgPoolingConfig: postgres-pooling
+    credentials:
+      users:
+        superuser:
+          username:
+            name: postgres-creds
+            key: superuser-username
+          password:
+            name: postgres-creds
+            key: superuser-password
+        replication:
+          username:
+            name: postgres-creds
+            key: replication-username
+          password:
+            name: postgres-creds
+            key: replication-password
+        authenticator:
+          username:
+            name: postgres-creds
+            key: authenticator-username
+          password:
+            name: postgres-creds
+            key: authenticator-password
+  pods:
+    persistentVolume:
+      size: {{ .Values.postgres.persistence.size | quote }}
+{{- if .Values.global }}
+{{- if .Values.global.storageClass }}
+      storageClass: {{ .Values.global.storageClass | quote }}
+{{- end }}
+{{- end }}
+  {{- if .Values.postgres.databases }}
+  managedSql:
+    scripts:
+      - sgScript: postgres-init
+  {{- end }}
+  prometheusAutobind: true
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-  namespace: {{ .Values.namespace }}
-spec:
-  selector:
-    app: postgres
-  ports:
-    - port: {{ .Values.postgres.port }}
-      targetPort: {{ .Values.postgres.port }}
-  clusterIP: None
+# Compatibility shim: existing apps and Keycloak hard-code
+# `postgres.data.svc.cluster.local:5432`. StackGres exposes the read/write
+# primary on a Service named exactly `postgres` (matching the SGCluster name),
+# so no aliasing is required — but we keep this comment as documentation.
 {{- end }}

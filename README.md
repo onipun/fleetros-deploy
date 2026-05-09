@@ -59,9 +59,23 @@ sudo apt install -y ansible podman
 pipx install ansible-core
 helm repo add argo https://argoproj.github.io/argo-helm
 
+# Browser-trusted local TLS (required for Phase 0)
+# Linux: sudo apt install libnss3-tools && download mkcert from
+#        https://github.com/FiloSottile/mkcert/releases
+# macOS: brew install mkcert nss
+mkcert -install   # adds the local CA to your OS + browser trust store
+
 # Optional: fast inner-loop on Podman
 brew install k3d   # or scoop / apt
 ```
+
+> **Why mkcert?** Self-signed certs make the browser show a "Not secure" /
+> `NET::ERR_CERT_AUTHORITY_INVALID` warning, which also makes server-side
+> `fetch()` calls from the Next.js dashboard fail with
+> `ERR_SSL_WRONG_VERSION_NUMBER`. mkcert generates a local Certificate
+> Authority that your OS/browser trust; the Ansible bootstrap copies that CA
+> into the cluster and configures cert-manager to issue per-host certs from
+> it. Result: every `*.fleetros.local` URL is fully trusted, no warnings.
 
 ### Bring up local VM + cluster
 
@@ -94,6 +108,20 @@ make prod-deploy     # apply Argo CD root app pointing at environments/prod/
 - **Argo CD Image Updater** on the VPS polls Docker Hub every 2 min and bumps tags in the gitops repo.
 - **Argo CD** syncs gitops repo → cluster every 3 min.
 - **Tag convention**: semver `vMAJOR.MINOR.PATCH` for prod overlay; `main-<sha>` allowed in local overlay.
+
+## Stateful services
+
+- **PostgreSQL is managed by [StackGres](https://stackgres.io/)**. The
+  operator is installed by Ansible bootstrap; the umbrella chart only ships
+  `SGCluster` / `SGScript` / `SGInstanceProfile` custom resources. StackGres
+  bundles Patroni HA, pgBouncer connection pooling, Prometheus exporters and
+  Grafana dashboards out of the box, so no separate monitoring stack is
+  needed.
+- The cluster Service stays at `postgres.data.svc.cluster.local:5432` so
+  Keycloak and every Spring service keep their existing JDBC URLs.
+- The **StackGres Web UI** is exposed at `https://stackgres.fleetros.local`
+  using the same Ingress pattern as Argo CD. Print credentials with:
+  `make local-stackgres-ui`.
 
 ## Adding a New Service
 

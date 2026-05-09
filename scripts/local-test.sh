@@ -30,7 +30,11 @@ phase=$(kubectl -n argocd get application fleetros-local -o jsonpath='{.status.s
 [[ "$phase" == "Synced" ]] && pass "Application Synced" || fail "Application not Synced (got: $phase)"
 
 echo "[6/7] postgres running"
-kubectl -n data rollout status statefulset/postgres --timeout=120s >/dev/null && pass "postgres" || fail "postgres"
+# StackGres bootstraps the primary as a StatefulSet named after the SGCluster,
+# i.e. `postgres-0` belonging to StatefulSet `postgres` in `data`. We give the
+# operator extra time on first reconcile because it has to pull images,
+# initialise PVCs and run Patroni.
+kubectl -n data rollout status statefulset/postgres --timeout=300s >/dev/null && pass "postgres (stackgres)" || fail "postgres"
 
 echo "[7/7] ingresses created"
 count=$(kubectl -n app get ingress --no-headers 2>/dev/null | wc -l)

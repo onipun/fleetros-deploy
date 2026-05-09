@@ -1,10 +1,19 @@
 {% if fleetros_env == "local" %}
+# Local: a CA issuer backed by the mkcert root CA. Because mkcert's CA is
+# trusted by the developer's browser (`mkcert -install` on the host), every
+# cert issued from this ClusterIssuer is automatically trusted — no more
+# "Your connection is not private" warnings on *.fleetros.local.
+#
+# The `mkcert-ca` Secret is seeded by the bootstrap role earlier in this
+# playbook; it contains tls.crt + tls.key from `$(mkcert -CAROOT)` on the
+# host that ran `make local-up`.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
   name: fleetros-issuer
 spec:
-  selfSigned: {}
+  ca:
+    secretName: mkcert-ca
 {% else %}
 # Prod LE DNS-01 issuer — fill in your DNS provider config before applying.
 apiVersion: cert-manager.io/v1

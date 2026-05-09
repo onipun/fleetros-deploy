@@ -30,8 +30,21 @@ help: ## Show this help
 		/^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
 ##@ Local (Phase 0)
-local-up: local-vm-up local-configure ## Provision multipass VM + run Ansible bootstrap
+local-up: local-mkcert-check local-vm-up local-configure ## Provision multipass VM + run Ansible bootstrap
 	@echo "Local cluster ready. Run: make local-deploy"
+
+local-mkcert-check: ## Verify mkcert is installed on host and the local CA is trusted
+	@command -v mkcert >/dev/null || { \
+		echo "ERROR: mkcert not installed. Install it then run 'mkcert -install'."; \
+		echo "  Linux:  sudo apt install libnss3-tools && wget -qO- https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64 | sudo tee /usr/local/bin/mkcert >/dev/null && sudo chmod +x /usr/local/bin/mkcert"; \
+		echo "  macOS:  brew install mkcert nss"; \
+		exit 1; \
+	}
+	@CAROOT=$$(mkcert -CAROOT); \
+	if [ ! -f "$$CAROOT/rootCA.pem" ] || [ ! -f "$$CAROOT/rootCA-key.pem" ]; then \
+		echo "ERROR: mkcert CA not generated. Run: mkcert -install"; exit 1; \
+	fi; \
+	echo "mkcert CAROOT: $$CAROOT (rootCA present)"
 
 local-vm-up: ## Launch multipass VM (idempotent)
 	@if multipass info $(VM_NAME) >/dev/null 2>&1; then \
@@ -87,10 +100,24 @@ local-argocd-portforward: ## Port-forward Argo CD UI to https://localhost:8443 (
 local-traefik-portforward: ## Port-forward Traefik dashboard to http://localhost:9000/dashboard/ (Ctrl+C to stop)
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n kube-system port-forward svc/traefik 9000:9000
 
+local-stackgres-ui: ## Print the StackGres Web UI URL + admin credentials
+	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	USER=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n stackgres get secret stackgres-restapi-admin \
+		-o jsonpath='{.data.k8sUsername}' 2>/dev/null | base64 -d); \
+	PW=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n stackgres get secret stackgres-restapi-admin \
+		-o jsonpath='{.data.clearPassword}' 2>/dev/null | base64 -d); \
+	echo "StackGres UI: https://stackgres.fleetros.local"; \
+	echo "  (or via VM IP: https://$$VM_IP — Host header: stackgres.fleetros.local)"; \
+	echo "Username:     $$USER"; \
+	echo "Password:     $$PW"
+
+local-stackgres-portforward: ## Port-forward StackGres UI to https://localhost:8843
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n stackgres port-forward svc/stackgres-restapi 8843:443
+
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
-LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik
+LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
@@ -172,4 +199,5 @@ helm-template-prod:
         local-reset local-down local-k3d-up local-k3d-down prod-configure prod-deploy prod-up \
         tofu-init tofu-plan tofu-apply tofu-destroy tofu-inventory secrets-edit-local \
         secrets-edit-prod helm-lint helm-template-local helm-template-prod \
-        local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust
+        local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust \
+        local-mkcert-check local-stackgres-ui local-stackgres-portforward

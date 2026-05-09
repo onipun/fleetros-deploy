@@ -6,6 +6,7 @@ fleetros_namespaces:
   - app
   - data
   - monitoring
+  - stackgres
 
 # Argo CD
 argocd_chart_version: "7.7.7"
@@ -21,6 +22,13 @@ argocd_image_updater_chart_version: "0.11.0"
 # cert-manager
 cert_manager_chart_version: "v1.16.1"
 cert_manager_namespace: infra
+
+# StackGres (PostgreSQL operator + monitoring stack + Web UI)
+stackgres_chart_version: "1.16.0"
+stackgres_namespace: stackgres
+# NodePort for the StackGres Web UI when port-forwarding/NodePort fallback is
+# wanted. Normal access goes through the Ingress at https://stackgres.<domain>.
+stackgres_ui_nodeport: 30081
 
 # Gitops repo (where Argo CD pulls from). Override per-env in inventory if you split repos later.
 gitops_repo_url: "https://github.com/YOUR_ORG/fleetros-deploy.git"

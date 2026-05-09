@@ -1,11 +1,15 @@
 enabled: true
 namespace: data
 
+# StackGres-managed PostgreSQL. The previous `image`/`tag`/`port` knobs are
+# gone — StackGres pins Postgres images per supported major version, and the
+# Service is always on 5432.
 postgres:
   enabled: true
-  image: postgres
-  tag: "16-alpine"
-  port: 5432
+  majorVersion: 16
+  instances: 1
+  cpu: "500m"
+  memory: "1Gi"
   persistence:
     size: 10Gi
   databases:
