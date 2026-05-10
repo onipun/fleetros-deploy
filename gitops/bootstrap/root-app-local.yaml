@@ -74,6 +74,19 @@ spec:
         - /spec/postgresServices
         - /spec/profile
         - /spec/toInstallPostgresExtensions
+        - /spec/configurations/observability
+        - /spec/pods/disableConnectionPooling
+        - /spec/pods/disableEnvoy
+        - /spec/pods/disablePostgresUtil
+        - /spec/pods/managementPolicy
+        - /spec/postgres/flavor
+        # Operator pins the exact patch version (e.g. 16 -> 16.8). Let it.
+        - /spec/postgres/version
+        # Operator auto-attaches an internal `postgres-default` script and
+        # adds `continueOnSGScriptError: false`. We attach our own script in
+        # the chart; ignore the whole `managedSql` block so the operator
+        # owns it.
+        - /spec/managedSql
     - group: stackgres.io
       kind: SGScript
       jqPathExpressions:
