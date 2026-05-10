@@ -127,6 +127,9 @@ spec:
   tls:
     - hosts:
         - "{{ .Values.ingressHost }}.{{ .Values.domain }}"
+        {{- if .Values.wildcardSubdomain }}
+        - "*.{{ .Values.ingressHost }}.{{ .Values.domain }}"
+        {{- end }}
         {{- range .Values.extraHosts }}
         - "{{ . }}.{{ $.Values.domain }}"
         {{- end }}
@@ -142,6 +145,22 @@ spec:
                 name: fleetros-customer
                 port:
                   number: {{ .Values.port }}
+    {{- if .Values.wildcardSubdomain }}
+    # Tenant subdomains published by the website-builder
+    # (e.g. tripz-car-rental.portal.fleetros.local). Single Ingress rule
+    # because Traefik supports wildcard hosts; backend is the same Service —
+    # the app routes by Host header / first path segment.
+    - host: "*.{{ .Values.ingressHost }}.{{ .Values.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fleetros-customer
+                port:
+                  number: {{ .Values.port }}
+    {{- end }}
     {{- range .Values.extraHosts }}
     - host: "{{ . }}.{{ $.Values.domain }}"
       http:

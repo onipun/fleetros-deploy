@@ -111,6 +111,57 @@
     - cluster-issuer
   register: issuer_files
 
+# ---------------------------------------------------------------------------
+# Prod-only: seed the DNS provider Secret cert-manager uses for ACME DNS-01.
+# Required so Let's Encrypt can issue wildcard certs for `*.portal.<domain>`.
+# Values come from group_vars/prod/vault.yml (ansible-vault encrypted).
+# ---------------------------------------------------------------------------
+- name: Seed Cloudflare API token Secret (prod, dns01 solver)
+  ansible.builtin.shell: |
+    kubectl -n {{ cert_manager_namespace }} create secret generic {{ acme_dns_secret_name }} \
+      --from-literal=api-token='{{ vault_cloudflare_api_token }}' \
+      --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - fleetros_env == "prod"
+    - acme_dns_provider == "cloudflare"
+  no_log: true
+  changed_when: false
+
+- name: Seed Route53 credentials Secret (prod, dns01 solver)
+  ansible.builtin.shell: |
+    kubectl -n {{ cert_manager_namespace }} create secret generic {{ acme_dns_secret_name }} \
+      --from-literal=access-key-id='{{ vault_aws_access_key_id }}' \
+      --from-literal=secret-access-key='{{ vault_aws_secret_access_key }}' \
+      --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - fleetros_env == "prod"
+    - acme_dns_provider == "route53"
+  no_log: true
+  changed_when: false
+
+- name: Seed Google Cloud DNS service account Secret (prod, dns01 solver)
+  ansible.builtin.shell: |
+    kubectl -n {{ cert_manager_namespace }} create secret generic {{ acme_dns_secret_name }} \
+      --from-literal=key.json='{{ vault_gcp_clouddns_sa_json }}' \
+      --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - fleetros_env == "prod"
+    - acme_dns_provider == "clouddns"
+  no_log: true
+  changed_when: false
+
 - name: kubectl apply ClusterIssuer
   ansible.builtin.shell: kubectl apply -f /tmp/cluster-issuer.yaml
   args:

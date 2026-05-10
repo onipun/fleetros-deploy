@@ -1,0 +1,18 @@
+---
+# Encrypt with: ansible-vault encrypt group_vars/prod/vault.yml
+# Then rename to vault.yml.
+
+# Cloudflare API token scoped to: Zone:Read + DNS:Edit on the fleetros zone.
+# Used by cert-manager to satisfy DNS-01 challenges for wildcard certs.
+vault_cloudflare_api_token: "REPLACE_ME"
+
+# Route53 alternative:
+# vault_aws_access_key_id: "AKIA..."
+# vault_aws_secret_access_key: "..."
+
+# Google Cloud DNS alternative — paste the JSON key file contents inline:
+# vault_gcp_clouddns_sa_json: |
+#   {
+#     "type": "service_account",
+#     ...
+#   }

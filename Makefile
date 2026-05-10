@@ -244,15 +244,21 @@ local-logs-customer: ## Tail fleetros-customer logs
 
 
 LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres
+# Published tenant subdomains for the website-builder. Append slugs here as
+# you publish them (e.g. `LOCAL_TENANT_HOSTS := tripz-car-rental acme-rentals`)
+# and re-run `make local-hosts-install`. /etc/hosts can't wildcard.
+LOCAL_TENANT_HOSTS ?=
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
-	echo "$$VM_IP $$HOSTS"
+	TENANTS=$$(for t in $(LOCAL_TENANT_HOSTS); do echo -n "$$t.portal.fleetros.local "; done); \
+	echo "$$VM_IP $$HOSTS$$TENANTS"
 
 local-hosts-install: ## Install/refresh /etc/hosts entries for *.fleetros.local (sudo)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
-	LINE="$$VM_IP $$HOSTS# fleetros-local"; \
+	TENANTS=$$(for t in $(LOCAL_TENANT_HOSTS); do echo -n "$$t.portal.fleetros.local "; done); \
+	LINE="$$VM_IP $$HOSTS$$TENANTS# fleetros-local"; \
 	echo "Updating /etc/hosts -> $$LINE"; \
 	sudo sed -i.bak '/# fleetros-local$$/d' /etc/hosts; \
 	echo "$$LINE" | sudo tee -a /etc/hosts >/dev/null; \

@@ -1,0 +1,28 @@
+---
+# Prod profile overrides.
+fleetros_env: prod
+gitops_values_file: "environments/prod/values.yaml"
+argocd_repo_url: "{{ gitops_repo_url }}"
+backup_target: "b2"
+tls_issuer: "letsencrypt-dns01"
+
+# ---------------------------------------------------------------------------
+# Let's Encrypt DNS-01 (wildcard-capable). Required for `*.portal.<domain>`
+# tenant subdomains issued by the website-builder.
+# ---------------------------------------------------------------------------
+acme_email: "ops@fleetros.example"
+# Use the staging endpoint while iterating to avoid LE rate limits:
+#   https://acme-staging-v02.api.letsencrypt.org/directory
+acme_server: "https://acme-v02.api.letsencrypt.org/directory"
+
+# Supported: cloudflare | route53 | clouddns. Add more in cluster-issuer.yaml.j2.
+acme_dns_provider: "cloudflare"
+
+# Route53 only:
+# acme_route53_region: "us-east-1"
+# Google Cloud DNS only:
+# acme_clouddns_project: "my-gcp-project"
+
+# Name of the Secret cert-manager reads the provider creds from.
+# Created by the bootstrap role from vault values.
+acme_dns_secret_name: "cloudflare-api-token"

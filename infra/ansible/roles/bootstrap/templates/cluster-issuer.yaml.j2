@@ -15,22 +15,42 @@ spec:
   ca:
     secretName: mkcert-ca
 {% else %}
-# Prod LE DNS-01 issuer — fill in your DNS provider config before applying.
+# Prod: Let's Encrypt with DNS-01. DNS-01 is REQUIRED for wildcard certs
+# (e.g. `*.portal.{{ domain | default("example.com") }}`) — HTTP-01 cannot
+# issue them. Variables come from group_vars/prod/main.yml + vault.yml.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
   name: fleetros-issuer
 spec:
   acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: ops@example.com
+    server: {{ acme_server | default("https://acme-v02.api.letsencrypt.org/directory") }}
+    email: {{ acme_email }}
     privateKeySecretRef:
       name: fleetros-le-account-key
     solvers:
       - dns01:
-          # TODO: replace with your DNS provider (cloudflare/route53/etc.)
+{% if acme_dns_provider == "cloudflare" %}
           cloudflare:
             apiTokenSecretRef:
-              name: cloudflare-api-token
+              name: {{ acme_dns_secret_name | default("cloudflare-api-token") }}
               key: api-token
+{% elif acme_dns_provider == "route53" %}
+          route53:
+            region: {{ acme_route53_region }}
+            accessKeyIDSecretRef:
+              name: {{ acme_dns_secret_name | default("route53-credentials") }}
+              key: access-key-id
+            secretAccessKeySecretRef:
+              name: {{ acme_dns_secret_name | default("route53-credentials") }}
+              key: secret-access-key
+{% elif acme_dns_provider == "clouddns" %}
+          cloudDNS:
+            project: {{ acme_clouddns_project }}
+            serviceAccountSecretRef:
+              name: {{ acme_dns_secret_name | default("clouddns-sa") }}
+              key: key.json
+{% else %}
+          # Unsupported provider "{{ acme_dns_provider }}" — extend this template.
+{% endif %}
 {% endif %}
