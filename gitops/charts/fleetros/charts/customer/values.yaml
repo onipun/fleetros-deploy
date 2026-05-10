@@ -44,6 +44,6 @@ persistence:
 # Next.js official image runs as uid/gid 1001 (`nextjs:nodejs`). fsGroup makes
 # the mounted volume group-writable by that gid so mkdir succeeds.
 podSecurityContext:
-  fsGroup: 02283a66-74ed-41a6-9224-5b8cea2ef116
+  fsGroup: 1001
   fsGroupChangePolicy: OnRootMismatch
 
