@@ -1,0 +1,5 @@
+apiVersion: v2
+name: customer
+description: Next.js Fleetros customer portal / website builder (fleetros-website-builder)
+type: application
+version: 0.1.0

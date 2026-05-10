@@ -161,8 +161,7 @@ web:
   port: 3000
   domain: fleetros.local
   ingressHost: app     # https://app.fleetros.local (dashboard mode)
-  extraHosts:
-    - portal           # https://portal.fleetros.local (customer portal mode)
+  extraHosts: []       # portal.fleetros.local is owned by the `customer` subchart (fleetros-website-builder)
   env:
     NEXT_PUBLIC_APP_URL: "https://app.fleetros.local"
     NEXT_PUBLIC_PRIMARY_HOSTS: "app.fleetros.local"
@@ -196,3 +195,42 @@ web:
     OAUTH_CALLBACK_URL: "https://app.fleetros.local/api/auth/callback/keycloak"
     SESSION_SECRET: "complex_password_at_least_32_characters_long_for_local_dev_only"
     CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local"
+
+customer:
+  enabled: true
+  image: so0n/fleetros-website-builder
+  tag: "latest"
+  port: 3001
+  domain: fleetros.local
+  ingressHost: portal      # https://portal.fleetros.local
+  extraHosts: []
+  db:
+    host: postgres.data.svc.cluster.local
+    port: "5432"
+    name: website
+    credsSecret: postgres-creds
+    userKey: POSTGRES_USER
+    passwordKey: POSTGRES_PASSWORD
+  env:
+    # Public app URL (used for absolute links / SSR self-references)
+    PUBLIC_BASE_URL: "https://portal.fleetros.local"
+    # Bake-time + runtime NEXT_PUBLIC_* (NEXT_PUBLIC_* are inlined at build
+    # time by Next.js, but we also export them at runtime for SSR routes)
+    NEXT_PUBLIC_BASE_DOMAIN: "fleetros.local"
+    NEXT_PUBLIC_AUTH_HOST: "https://app.fleetros.local"
+    NEXT_PUBLIC_AUTH_PORT: "443"
+    NEXT_PUBLIC_RENTAL_API_HOST: "https://api.fleetros.local"
+    NEXT_PUBLIC_RENTAL_API_PORT: "443"
+    NEXT_PUBLIC_RECEIPT_API_PORT: "443"
+    NEXT_PUBLIC_USE_SAMPLE_DATA: "false"
+    NEXT_PUBLIC_MAX_CARS_SELECTABLE: "5"
+    # Auth service (server-side; in-cluster DNS to backoffice for /api/auth/me)
+    AUTH_SERVICE_URL: "http://backoffice.app.svc.cluster.local:8082"
+    AUTH_REDIRECT_URL: "https://app.fleetros.local"
+    # Customer portal login URL pattern (browser-facing)
+    CUSTOMER_PORTAL_BASE_URL: "https://portal.fleetros.local"
+    BASE_DOMAIN: "fleetros.local"
+    ADMIN_ROLE: "ROLE_SYSTEM_ADMIN"
+    # Storage (filesystem inside the pod by default)
+    STORAGE_PROVIDER: "filesystem"
+

@@ -1,0 +1,29 @@
+enabled: true
+namespace: app
+domain: fleetros.local
+tlsIssuer: fleetros-issuer
+ingressClassName: traefik
+
+image: so0n/fleetros-website-builder
+tag: "latest"
+# IfNotPresent so a locally-imported image (e.g. via `make local-build-customer`)
+# is not silently overwritten by a pull from Docker Hub on pod restart.
+imagePullPolicy: IfNotPresent
+port: 3001
+replicas: 1
+ingressHost: portal   # https://portal.fleetros.local
+extraHosts: []        # additional subdomain prefixes routed to the same service
+
+# Database (StackGres-managed Postgres in the `data` namespace).
+# Credentials come from the Ansible-seeded `postgres-creds` Secret which is
+# only present in the `data` namespace, so we replicate it into `app` via the
+# platform chart's existing pattern (see platform/templates/services.yaml).
+db:
+  host: postgres.data.svc.cluster.local
+  port: "5432"
+  name: website
+  credsSecret: postgres-creds
+  userKey: POSTGRES_USER
+  passwordKey: POSTGRES_PASSWORD
+
+env: {}

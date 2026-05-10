@@ -163,6 +163,49 @@ local-rollout-web: ## Restart fleetros-web pods to pick up the freshly imported 
 local-logs-web: ## Tail fleetros-web logs
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-web --max-log-requests=10
 
+# ── Customer portal (fleetros-website-builder) ────────────────────
+CUSTOMER_REPO_DIR ?= $(abspath ../fleetros-website-builder)
+CUSTOMER_IMAGE    ?= so0n/fleetros-website-builder
+CUSTOMER_TAG      ?= latest
+
+local-build-customer: ## Build fleetros-customer image with local NEXT_PUBLIC_* baked in, import into k3s
+	@test -d "$(CUSTOMER_REPO_DIR)" || { echo "ERROR: CUSTOMER_REPO_DIR=$(CUSTOMER_REPO_DIR) not found. Override with: make local-build-customer CUSTOMER_REPO_DIR=/path/to/fleetros-website-builder"; exit 1; }
+	@echo "Building $(CUSTOMER_IMAGE):$(CUSTOMER_TAG) from $(CUSTOMER_REPO_DIR)"
+	docker build \
+		--build-arg NEXT_PUBLIC_BASE_DOMAIN=fleetros.local \
+		--build-arg NEXT_PUBLIC_AUTH_HOST=https://app.fleetros.local \
+		--build-arg NEXT_PUBLIC_AUTH_PORT=443 \
+		--build-arg NEXT_PUBLIC_RENTAL_API_HOST=https://api.fleetros.local \
+		--build-arg NEXT_PUBLIC_RENTAL_API_PORT=443 \
+		--build-arg NEXT_PUBLIC_RECEIPT_API_PORT=443 \
+		--build-arg NEXT_PUBLIC_USE_SAMPLE_DATA=false \
+		--build-arg NEXT_PUBLIC_MAX_CARS_SELECTABLE=5 \
+		-t $(CUSTOMER_IMAGE):$(CUSTOMER_TAG) \
+		"$(CUSTOMER_REPO_DIR)" && \
+		docker push $(CUSTOMER_IMAGE):$(CUSTOMER_TAG)
+
+	@$(MAKE) --no-print-directory local-import-customer
+	@$(MAKE) --no-print-directory local-rollout-customer
+
+local-import-customer: ## Save fleetros-customer image and import it into k3s containerd inside the VM
+	@TMP=$$(mktemp -d "$$HOME/fleetros-customer-XXXXXX"); TAR=$$TMP/customer.tar; \
+	echo "Saving $(CUSTOMER_IMAGE):$(CUSTOMER_TAG) -> $$TAR"; \
+	docker save -o $$TAR $(CUSTOMER_IMAGE):$(CUSTOMER_TAG); \
+	echo "Transferring to $(VM_NAME)"; \
+	multipass transfer $$TAR $(VM_NAME):/tmp/fleetros-customer.tar; \
+	echo "Importing into k3s containerd (k8s.io namespace)"; \
+	multipass exec $(VM_NAME) -- sudo /usr/local/bin/k3s ctr -n k8s.io images import /tmp/fleetros-customer.tar; \
+	multipass exec $(VM_NAME) -- sudo rm -f /tmp/fleetros-customer.tar; \
+	rm -rf $$TMP
+
+local-rollout-customer: ## Restart fleetros-customer pods to pick up the freshly imported image
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-customer
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-customer --timeout=180s
+
+local-logs-customer: ## Tail fleetros-customer logs
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-customer --max-log-requests=10
+
+
 LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
@@ -246,4 +289,6 @@ helm-template-prod:
         tofu-init tofu-plan tofu-apply tofu-destroy tofu-inventory secrets-edit-local \
         secrets-edit-prod helm-lint helm-template-local helm-template-prod \
         local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust \
-        local-mkcert-check local-stackgres-ui local-stackgres-portforward
+        local-mkcert-check local-stackgres-ui local-stackgres-portforward \
+        local-build-web local-import-web local-rollout-web local-logs-web \
+        local-build-customer local-import-customer local-rollout-customer local-logs-customer

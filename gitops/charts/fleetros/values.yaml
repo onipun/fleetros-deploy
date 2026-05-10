@@ -111,6 +111,14 @@ web:
   env:
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"
 
+customer:
+  enabled: true
+  image: so0n/fleetros-website-builder
+  tag: "latest"
+  port: 3001
+  replicas: 1
+  env: {}
+
 # Argo CD ingress (umbrella). Local exposes Argo UI at https://argocd.fleetros.local
 argocd:
   ingress:
