@@ -61,10 +61,10 @@ spec:
 {{- range $i, $db := .Values.postgres.databases }}
     - id: {{ $i }}
       name: create-{{ $db }}
-      # CREATE DATABASE cannot run inside a transaction. We disable the
-      # implicit transaction wrapper and rely on `\gexec` to run the
-      # CREATE only when the row from the guard SELECT is non-empty.
-      wrapInTransaction: ~
+      # CREATE DATABASE cannot run inside a transaction. The CRD rejects
+      # `wrapInTransaction: null` (must be a string), so we simply omit the
+      # field — StackGres treats the absence of the key as "no wrapper",
+      # which is exactly what we need for `\gexec`-driven CREATE DATABASE.
       script: |
         SELECT 'CREATE DATABASE "{{ $db }}"'
         WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ $db }}')\gexec
