@@ -171,7 +171,7 @@ web:
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"
     NEXT_PUBLIC_API_URL: "https://api.fleetros.local"
     NEXT_PUBLIC_REPORTING_API_URL: "https://reporting.fleetros.local"
-    NEXT_PUBLIC_SITE_EDITOR_URL: "https://portal.fleetros.local"
+    NEXT_PUBLIC_SITE_EDITOR_URL: "https://customer-api.fleetros.local"
     NEXT_PUBLIC_ENABLE_ONBOARDING: "true"
     NEXT_PUBLIC_ENABLE_NOTIFICATIONS: "true"
     NEXT_PUBLIC_ENABLE_COMMAND_PALETTE: "true"

@@ -157,8 +157,12 @@ local-import-web: ## Save fleetros-web image and import it into k3s containerd i
 	rm -rf $$TMP
 
 local-rollout-web: ## Restart fleetros-web pods to pick up the freshly imported image
-	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-web
-	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-web --timeout=180s
+	@if KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get deploy fleetros-web >/dev/null 2>&1; then \
+		KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-web && \
+		KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-web --timeout=180s; \
+	else \
+		echo "WARN: deploy/fleetros-web not found in namespace app. Sync Argo CD (commit + push gitops, then 'argocd app sync fleetros-local' or wait for auto-sync) and retry."; \
+	fi
 
 local-logs-web: ## Tail fleetros-web logs
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-web --max-log-requests=10
@@ -199,8 +203,40 @@ local-import-customer: ## Save fleetros-customer image and import it into k3s co
 	rm -rf $$TMP
 
 local-rollout-customer: ## Restart fleetros-customer pods to pick up the freshly imported image
-	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-customer
-	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-customer --timeout=180s
+	@if KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get deploy fleetros-customer >/dev/null 2>&1; then \
+		KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-customer && \
+		KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-customer --timeout=180s; \
+	else \
+		echo "WARN: deploy/fleetros-customer not found in namespace app."; \
+		echo "      The customer subchart must be synced by Argo CD first."; \
+		echo "      Steps: 1) git add/commit/push the gitops changes,"; \
+		echo "             2) wait for Argo CD auto-sync (or run: argocd app sync fleetros-local),"; \
+		echo "             3) run 'make local-customer-db-push' to apply the schema,"; \
+		echo "             4) re-run 'make local-build-customer'."; \
+	fi
+
+local-customer-db-push: ## Apply the website-builder Drizzle schema to the in-cluster Postgres (port-forward + bun run db:push)
+	@test -d "$(CUSTOMER_REPO_DIR)" || { echo "ERROR: CUSTOMER_REPO_DIR=$(CUSTOMER_REPO_DIR) not found."; exit 1; }
+	@command -v bun >/dev/null 2>&1 || { echo "ERROR: bun not found on host (install: https://bun.sh)"; exit 1; }
+	@echo "Fetching postgres-creds from app namespace..."
+	@DB_USER=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get secret postgres-creds -o jsonpath='{.data.POSTGRES_USER}' | base64 -d); \
+	DB_PASSWORD=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get secret postgres-creds -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d); \
+	if [ -z "$$DB_USER" ] || [ -z "$$DB_PASSWORD" ]; then echo "ERROR: postgres-creds Secret missing or empty in 'app' namespace."; exit 1; fi; \
+	echo "Port-forwarding postgres (sts) -> localhost:55432"; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n data port-forward sts/postgres 55432:5432 >/tmp/fleetros-pg-pf.log 2>&1 & \
+	PF_PID=$$!; \
+	trap "kill $$PF_PID 2>/dev/null || true" EXIT; \
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if (echo > /dev/tcp/127.0.0.1/55432) >/dev/null 2>&1; then break; fi; \
+		sleep 1; \
+	done; \
+	if ! (echo > /dev/tcp/127.0.0.1/55432) >/dev/null 2>&1; then \
+		echo "ERROR: port-forward did not become ready. Log:"; cat /tmp/fleetros-pg-pf.log; exit 1; \
+	fi; \
+	echo "Running 'bun run db:push' against website DB..."; \
+	cd "$(CUSTOMER_REPO_DIR)" && \
+		DB_HOST=127.0.0.1 DB_PORT=55432 DB_USER=$$DB_USER DB_PASSWORD=$$DB_PASSWORD DB_NAME=website \
+		bun run db:push
 
 local-logs-customer: ## Tail fleetros-customer logs
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-customer --max-log-requests=10
@@ -291,4 +327,4 @@ helm-template-prod:
         local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust \
         local-mkcert-check local-stackgres-ui local-stackgres-portforward \
         local-build-web local-import-web local-rollout-web local-logs-web \
-        local-build-customer local-import-customer local-rollout-customer local-logs-customer
+        local-build-customer local-import-customer local-rollout-customer local-logs-customer local-customer-db-push
