@@ -84,7 +84,11 @@ metadata:
   name: fleetros-customer-sites
   namespace: {{ .Values.namespace }}
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    # Same wave as the Deployment: with WaitForFirstConsumer storage classes
+    # (e.g. k3s local-path) the PVC stays Pending until a pod schedules, so
+    # we must let Argo CD apply both together — otherwise the sync deadlocks
+    # waiting for the PVC to become Bound.
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   accessModes:
     {{- range .Values.persistence.accessModes }}
