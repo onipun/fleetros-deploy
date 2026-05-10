@@ -157,7 +157,7 @@ If you want Argo CD Image Updater to automatically deploy new tags for this serv
     argocd-image-updater.argoproj.io/newservice.allow-tags: "regexp:^main-.+"
 ```
 
-**4. Commit & Push to git repo
+**4. Commit & Push to git repo**
 to let the argo take the changes, commit the code change and push to the git repo. Argo will automatically pickup the changes and do deployment.
 
 ## Publishing Tenant Sites (multi-tenant website-builder)
