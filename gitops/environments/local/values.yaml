@@ -198,6 +198,15 @@ web:
     OAUTH_CALLBACK_URL: "https://app.fleetros.local/api/auth/callback/keycloak"
     SESSION_SECRET: "complex_password_at_least_32_characters_long_for_local_dev_only"
     CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local"
+    # Share the iron-session cookie across *.fleetros.local so that after
+    # logging in at app.fleetros.local the same cookie is sent to
+    # portal.fleetros.local (website-builder middleware /api/auth/me check).
+    SESSION_COOKIE_DOMAIN: ".fleetros.local"
+    # End-customer portal (Spring customer-portal-service) — browser-facing.
+    # Used by the /portal/* routes inside backoffice-v2 to call the OTP /
+    # bookings APIs. Must be the public ingress host because this is read
+    # client-side.
+    NEXT_PUBLIC_PORTAL_API_BASE_URL: "https://customer-api.fleetros.local"
 
 customer:
   # Tenant-facing website builder (Next.js, fleetros-website-builder repo).
@@ -242,8 +251,11 @@ customer:
     NEXT_PUBLIC_RECEIPT_API_PORT: "443"
     NEXT_PUBLIC_USE_SAMPLE_DATA: "false"
     NEXT_PUBLIC_MAX_CARS_SELECTABLE: "5"
-    # Auth service (server-side; in-cluster DNS to backoffice for /api/auth/me)
-    AUTH_SERVICE_URL: "http://backoffice.app.svc.cluster.local:8082"
+    # Auth service (server-side; in-cluster DNS to the backoffice Next.js for
+    # /api/auth/me — this endpoint is implemented by fleetros-web, NOT the
+    # Spring backoffice service). The cookie forwarded here is the iron-session
+    # cookie shared via SESSION_COOKIE_DOMAIN=.fleetros.local.
+    AUTH_SERVICE_URL: "http://fleetros-web.app.svc.cluster.local:3000"
     AUTH_REDIRECT_URL: "https://app.fleetros.local"
     # Customer portal login URL pattern (browser-facing)
     CUSTOMER_PORTAL_BASE_URL: "https://portal.fleetros.local"

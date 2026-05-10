@@ -134,6 +134,7 @@ local-build-web: ## Build fleetros-web image with local NEXT_PUBLIC_* baked in, 
 		--build-arg NEXT_PUBLIC_API_URL=https://api.fleetros.local \
 		--build-arg NEXT_PUBLIC_REPORTING_API_URL=https://reporting.fleetros.local \
 		--build-arg NEXT_PUBLIC_SITE_EDITOR_URL=https://portal.fleetros.local \
+		--build-arg NEXT_PUBLIC_PORTAL_API_BASE_URL=https://customer-api.fleetros.local \
 		--build-arg NEXT_PUBLIC_ENABLE_ONBOARDING=true \
 		--build-arg NEXT_PUBLIC_ENABLE_NOTIFICATIONS=true \
 		--build-arg NEXT_PUBLIC_ENABLE_COMMAND_PALETTE=true \
