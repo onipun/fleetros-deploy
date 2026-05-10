@@ -171,7 +171,10 @@ web:
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.local"
     NEXT_PUBLIC_API_URL: "https://api.fleetros.local"
     NEXT_PUBLIC_REPORTING_API_URL: "https://reporting.fleetros.local"
-    NEXT_PUBLIC_SITE_EDITOR_URL: "https://customer-api.fleetros.local"
+    # Backoffice sidebar "Customer App" link → tenant website builder UI
+    # (Next.js, served by the `customer` subchart). NOT customer-api, which is
+    # the Spring backend for end-customer (tenant-of-tenant) login.
+    NEXT_PUBLIC_SITE_EDITOR_URL: "https://portal.fleetros.local"
     NEXT_PUBLIC_ENABLE_ONBOARDING: "true"
     NEXT_PUBLIC_ENABLE_NOTIFICATIONS: "true"
     NEXT_PUBLIC_ENABLE_COMMAND_PALETTE: "true"
@@ -197,6 +200,17 @@ web:
     CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local"
 
 customer:
+  # Tenant-facing website builder (Next.js, fleetros-website-builder repo).
+  # Two roles, distinguished by hostname:
+  #   * portal.fleetros.local           → admin / site-builder dashboard.
+  #     Tenants land here when they click "Customer App" in the backoffice
+  #     sidebar (NEXT_PUBLIC_SITE_EDITOR_URL above).
+  #   * <tenant>.portal.fleetros.local  → published static site for that
+  #     tenant (rewritten by the Next.js middleware to /sites/<tenant>/...).
+  #
+  # NOTE: the *end-customer* (tenant's customers) login flow is owned by the
+  # `customerportal` Spring service exposed at https://customer-api.fleetros.local.
+  # Don't confuse the two.
   enabled: true
   image: so0n/fleetros-website-builder
   tag: "latest"
@@ -214,9 +228,13 @@ customer:
   env:
     # Public app URL (used for absolute links / SSR self-references)
     PUBLIC_BASE_URL: "https://portal.fleetros.local"
-    # Bake-time + runtime NEXT_PUBLIC_* (NEXT_PUBLIC_* are inlined at build
-    # time by Next.js, but we also export them at runtime for SSR routes)
-    NEXT_PUBLIC_BASE_DOMAIN: "fleetros.local"
+    # Tenant subdomain routing: middleware treats any host of the form
+    # <tenant>.<BASE_DOMAIN> as a tenant site, and the bare BASE_DOMAIN as
+    # the admin/builder root. Setting BASE_DOMAIN to the apex (fleetros.local)
+    # would make middleware rewrite portal.fleetros.local/ to
+    # /sites/portal/index.html → 404. Use the portal host as the base.
+    NEXT_PUBLIC_BASE_DOMAIN: "portal.fleetros.local"
+    BASE_DOMAIN: "portal.fleetros.local"
     NEXT_PUBLIC_AUTH_HOST: "https://app.fleetros.local"
     NEXT_PUBLIC_AUTH_PORT: "443"
     NEXT_PUBLIC_RENTAL_API_HOST: "https://api.fleetros.local"
@@ -229,7 +247,6 @@ customer:
     AUTH_REDIRECT_URL: "https://app.fleetros.local"
     # Customer portal login URL pattern (browser-facing)
     CUSTOMER_PORTAL_BASE_URL: "https://portal.fleetros.local"
-    BASE_DOMAIN: "fleetros.local"
     ADMIN_ROLE: "ROLE_SYSTEM_ADMIN"
     # Storage (filesystem inside the pod by default)
     STORAGE_PROVIDER: "filesystem"

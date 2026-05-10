@@ -176,7 +176,7 @@ local-build-customer: ## Build fleetros-customer image with local NEXT_PUBLIC_* 
 	@test -d "$(CUSTOMER_REPO_DIR)" || { echo "ERROR: CUSTOMER_REPO_DIR=$(CUSTOMER_REPO_DIR) not found. Override with: make local-build-customer CUSTOMER_REPO_DIR=/path/to/fleetros-website-builder"; exit 1; }
 	@echo "Building $(CUSTOMER_IMAGE):$(CUSTOMER_TAG) from $(CUSTOMER_REPO_DIR)"
 	docker build \
-		--build-arg NEXT_PUBLIC_BASE_DOMAIN=fleetros.local \
+		--build-arg NEXT_PUBLIC_BASE_DOMAIN=portal.fleetros.local \
 		--build-arg NEXT_PUBLIC_AUTH_HOST=https://app.fleetros.local \
 		--build-arg NEXT_PUBLIC_AUTH_PORT=443 \
 		--build-arg NEXT_PUBLIC_RENTAL_API_HOST=https://api.fleetros.local \
