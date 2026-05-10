@@ -101,6 +101,12 @@ platform:
     reporting:
       enabled: true
       image: so0n/car-rental-reporting-service
+      ingressHost: reporting   # https://reporting.fleetros.local
+       # Start AFTER backoffice has had a chance to create canonical schema.
+       # Reporting's local Account/User entities map to a singular `account`
+       # table that conflicts with backoffice's `accounts`. We force ddl-auto=none
+       # so reporting cannot pollute the shared schema. Sync wave is belt-and-
+       # suspenders so on a fresh cluster Argo orders backoffice first.
       tag: "latest"
       port: 8084
       # Start AFTER backoffice has had a chance to create canonical schema.
