@@ -73,6 +73,7 @@ platform:
         # ingress host, so without this override Spring Security 403s the
         # OPTIONS preflight for /api/registration/master-account etc.
         CORS_ALLOWED_ORIGINS: "https://app.fleetros.local,https://portal.fleetros.local,http://localhost:3000"
+        FILE_STORAGE_LOCAL_BASE_URL: https://api.fleetros.local/api/files
     payment:
       enabled: true
       image: so0n/car-rental-payment-service
