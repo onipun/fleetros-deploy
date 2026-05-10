@@ -72,7 +72,7 @@ platform:
         # `cors.allowed-origins` in application-dev.yml does NOT include the
         # ingress host, so without this override Spring Security 403s the
         # OPTIONS preflight for /api/registration/master-account etc.
-        CORS_ALLOWED_ORIGINS: "https://app.fleetros.local,https://portal.fleetros.local,http://localhost:3000"
+        CORS_ALLOWED_ORIGINS: "https://*.fleetros.local,http://localhost:3000"
         FILE_STORAGE_LOCAL_BASE_URL: https://api.fleetros.local/api/files
     payment:
       enabled: true
@@ -117,7 +117,7 @@ platform:
         SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: none
         BACKOFFICE_SERVICE_BASE_URL: http://backoffice.app.svc.cluster.local:8082
         # Browser CORS: dashboard hits reporting.fleetros.local directly.
-        CORS_ALLOWED_ORIGINS: "https://app.fleetros.local,https://portal.fleetros.local,http://localhost:3000"
+        CORS_ALLOWED_ORIGINS: "https://*.fleetros.local,http://localhost:3000"
     customerportal:
       enabled: true
       image: so0n/car-rental-customer-portal-service
@@ -133,7 +133,7 @@ platform:
         CUSTOMER_KEYCLOAK_REALM: carrental-customers
         SERVER_PORT: "8086"
         # Browser CORS: portal/app call customer-api.fleetros.local.
-        CUSTOMER_PORTAL_CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local,https://app.fleetros.local,http://localhost:3000"
+        CUSTOMER_PORTAL_CORS_ALLOWED_ORIGINS: "https://*.fleetros.local,http://localhost:3000"
     notification:
       enabled: true
       image: so0n/car-rental-notification-service
@@ -197,7 +197,7 @@ web:
     KEYCLOAK_JWKS_ENDPOINT: "http://keycloak.data.svc.cluster.local:8080/realms/backoffice/protocol/openid-connect/certs"
     OAUTH_CALLBACK_URL: "https://app.fleetros.local/api/auth/callback/keycloak"
     SESSION_SECRET: "complex_password_at_least_32_characters_long_for_local_dev_only"
-    CORS_ALLOWED_ORIGINS: "https://portal.fleetros.local"
+    CORS_ALLOWED_ORIGINS: "https://*.fleetros.local"
     # Share the iron-session cookie across *.fleetros.local so that after
     # logging in at app.fleetros.local the same cookie is sent to
     # portal.fleetros.local (website-builder middleware /api/auth/me check).
