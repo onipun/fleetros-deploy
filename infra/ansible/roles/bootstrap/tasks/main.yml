@@ -151,20 +151,99 @@
 # The operator must exist BEFORE Argo CD applies the umbrella chart, because
 # the chart ships SGCluster / SGScript custom resources that the operator's
 # CRDs must already be registered for.
+#
+# Notes on previous failures:
+#   1. `--set adminui.service.exposeHTTP.enabled=true` triggered a Helm
+#      coalesce warning ("destination is a table. Ignoring non-table value")
+#      because the chart's default for that key collides with a subchart
+#      override. We do NOT need an extra HTTP port — Traefik can talk HTTPS
+#      to the default `stackgres-restapi:443` Service via a backend-scheme
+#      annotation on the Ingress.
+#   2. The chart's pre-install hook Job `stackgres-operator-install-sgconfig`
+#      hits `BackoffLimitExceeded` on slow K3s VMs because the operator's
+#      webhook pod isn't Ready by the time the Job's retry budget runs out.
+#      The `--timeout 15m` plus `--wait-for-jobs` gives the webhook enough
+#      head-start; on failure we dump the Job's pod logs so the next run
+#      isn't a guessing game.
 # ---------------------------------------------------------------------------
-- name: Install StackGres operator
+- name: Pre-create StackGres namespace (so the chart's pre-install Job has somewhere to run)
   ansible.builtin.shell: |
-    helm upgrade --install stackgres-operator stackgres-charts/stackgres-operator \
-      --namespace {{ stackgres_namespace }} \
-      --create-namespace \
-      --version {{ stackgres_chart_version }} \
-      --set adminui.service.exposeHTTP.enabled=true \
-      --set adminui.service.exposeHTTP.port=8080 \
-      --wait --timeout 10m
+    kubectl create namespace {{ stackgres_namespace }} --dry-run=client -o yaml | kubectl apply -f -
   args:
     executable: /bin/bash
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Clean up a previous failed StackGres install (pending-install / failed Helm release)
+  ansible.builtin.shell: |
+    set +e
+    STATUS=$(helm status stackgres-operator -n {{ stackgres_namespace }} -o json 2>/dev/null | sed -n 's/.*"status": *"\([^"]*\)".*/\1/p' | head -n1)
+    case "$STATUS" in
+      pending-install|pending-upgrade|pending-rollback|failed)
+        echo "Existing release in '$STATUS' state — uninstalling before retry."
+        helm uninstall stackgres-operator -n {{ stackgres_namespace }} --wait || true
+        # Some pre-install Jobs survive `helm uninstall`. Delete them by hand.
+        kubectl -n {{ stackgres_namespace }} delete jobs -l app=stackgres-operator --ignore-not-found
+        kubectl -n {{ stackgres_namespace }} delete jobs --field-selector=status.successful!=1 --ignore-not-found
+        ;;
+      *)
+        echo "No prior failed release (status='$STATUS')."
+        ;;
+    esac
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Install StackGres operator
+  ansible.builtin.shell: |
+    helm upgrade --install stackgres-operator stackgres-charts/stackgres-operator \
+      --namespace {{ stackgres_namespace }} \
+      --version {{ stackgres_chart_version }} \
+      --wait --wait-for-jobs --timeout 15m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: stackgres_install
+  failed_when: false
+
+- name: Dump StackGres install diagnostics on failure
+  ansible.builtin.shell: |
+    set +e
+    echo "=== helm status ==="
+    helm status stackgres-operator -n {{ stackgres_namespace }} || true
+    echo "=== pods ==="
+    kubectl -n {{ stackgres_namespace }} get pods -o wide || true
+    echo "=== jobs ==="
+    kubectl -n {{ stackgres_namespace }} get jobs || true
+    echo "=== events (last 50) ==="
+    kubectl -n {{ stackgres_namespace }} get events --sort-by=.lastTimestamp | tail -n 50 || true
+    for j in $(kubectl -n {{ stackgres_namespace }} get jobs -o name 2>/dev/null); do
+      echo "=== $j logs ==="
+      kubectl -n {{ stackgres_namespace }} logs $j --tail=200 --all-containers=true || true
+    done
+    for p in $(kubectl -n {{ stackgres_namespace }} get pods -o name 2>/dev/null); do
+      echo "=== $p describe (events tail) ==="
+      kubectl -n {{ stackgres_namespace }} describe $p | tail -n 30 || true
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: stackgres_install.rc is defined and stackgres_install.rc != 0
+  changed_when: false
+
+- name: Fail loudly if StackGres install failed
+  ansible.builtin.fail:
+    msg: |
+      StackGres operator install failed (rc={{ stackgres_install.rc }}).
+      stderr: {{ stackgres_install.stderr | default('') }}
+      See the diagnostic dump above for the failing pod / job logs.
+  when: stackgres_install.rc is defined and stackgres_install.rc != 0
+
 
 - name: Render and apply seeded Secrets
   ansible.builtin.template:
