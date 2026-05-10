@@ -118,6 +118,10 @@ customer:
   port: 3001
   replicas: 1
   env: {}
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
 
 # Argo CD ingress (umbrella). Local exposes Argo UI at https://argocd.fleetros.local
 argocd:
