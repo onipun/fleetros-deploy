@@ -21,6 +21,7 @@ spec:
       containers:
         - name: web
           image: "{{ .Values.image }}:{{ .Values.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: {{ .Values.port }}
           env:

@@ -117,6 +117,49 @@ local-stackgres-portforward: ## Port-forward StackGres UI to https://localhost:8
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
+##@ Local — image builds
+WEB_REPO_DIR ?= $(abspath ../fleetros-backoffice-v2)
+WEB_IMAGE    ?= so0n/car-rental-backoffice-dashboard
+WEB_TAG      ?= latest
+
+local-build-web: ## Build fleetros-web image with local NEXT_PUBLIC_* baked in, import into k3s
+	@test -d "$(WEB_REPO_DIR)" || { echo "ERROR: WEB_REPO_DIR=$(WEB_REPO_DIR) not found. Override with: make local-build-web WEB_REPO_DIR=/path/to/fleetros-backoffice-v2"; exit 1; }
+	@echo "Building $(WEB_IMAGE):$(WEB_TAG) from $(WEB_REPO_DIR)"
+	docker build \
+		--build-arg NEXT_PUBLIC_APP_URL=https://app.fleetros.local \
+		--build-arg NEXT_PUBLIC_PRIMARY_HOSTS=app.fleetros.local \
+		--build-arg NEXT_PUBLIC_BRAND_NAME=Fleetros \
+		--build-arg NEXT_PUBLIC_I18N_DEFAULT_LOCALE=en \
+		--build-arg NEXT_PUBLIC_API_BASE_URL=https://api.fleetros.local \
+		--build-arg NEXT_PUBLIC_API_URL=https://api.fleetros.local \
+		--build-arg NEXT_PUBLIC_REPORTING_API_URL=https://reporting.fleetros.local \
+		--build-arg NEXT_PUBLIC_SITE_EDITOR_URL=https://portal.fleetros.local \
+		--build-arg NEXT_PUBLIC_ENABLE_ONBOARDING=true \
+		--build-arg NEXT_PUBLIC_ENABLE_NOTIFICATIONS=true \
+		--build-arg NEXT_PUBLIC_ENABLE_COMMAND_PALETTE=true \
+		-t $(WEB_IMAGE):$(WEB_TAG) \
+		"$(WEB_REPO_DIR)"
+	@$(MAKE) --no-print-directory local-import-web
+	@$(MAKE) --no-print-directory local-rollout-web
+
+local-import-web: ## Save fleetros-web image and import it into k3s containerd inside the VM
+	@TMP=$$(mktemp -d "$$HOME/fleetros-web-XXXXXX"); TAR=$$TMP/web.tar; \
+	echo "Saving $(WEB_IMAGE):$(WEB_TAG) -> $$TAR"; \
+	docker save -o $$TAR $(WEB_IMAGE):$(WEB_TAG); \
+	echo "Transferring to $(VM_NAME)"; \
+	multipass transfer $$TAR $(VM_NAME):/tmp/fleetros-web.tar; \
+	echo "Importing into k3s containerd (k8s.io namespace)"; \
+	multipass exec $(VM_NAME) -- sudo /usr/local/bin/k3s ctr -n k8s.io images import /tmp/fleetros-web.tar; \
+	multipass exec $(VM_NAME) -- sudo rm -f /tmp/fleetros-web.tar; \
+	rm -rf $$TMP
+
+local-rollout-web: ## Restart fleetros-web pods to pick up the freshly imported image
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout restart deploy/fleetros-web
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app rollout status  deploy/fleetros-web --timeout=180s
+
+local-logs-web: ## Tail fleetros-web logs
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-web --max-log-requests=10
+
 LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres
 local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your host)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
