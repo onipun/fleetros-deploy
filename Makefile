@@ -138,7 +138,10 @@ local-build-web: ## Build fleetros-web image with local NEXT_PUBLIC_* baked in, 
 		--build-arg NEXT_PUBLIC_ENABLE_NOTIFICATIONS=true \
 		--build-arg NEXT_PUBLIC_ENABLE_COMMAND_PALETTE=true \
 		-t $(WEB_IMAGE):$(WEB_TAG) \
-		"$(WEB_REPO_DIR)"
+		"$(WEB_REPO_DIR)" && \
+		docker push $(WEB_IMAGE):$(WEB_TAG)
+
+	
 	@$(MAKE) --no-print-directory local-import-web
 	@$(MAKE) --no-print-directory local-rollout-web
 
