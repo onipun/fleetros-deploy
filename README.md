@@ -159,3 +159,37 @@ If you want Argo CD Image Updater to automatically deploy new tags for this serv
 
 **4. Commit & Push to git repo
 to let the argo take the changes, commit the code change and push to the git repo. Argo will automatically pickup the changes and do deployment.
+
+## Publishing Tenant Sites (multi-tenant website-builder)
+
+The `customer` subchart (image `so0n/fleetros-website-builder`) hosts published tenant sites at `https://<slug>.portal.fleetros.local`. The Ingress is wildcard-aware (`customer.wildcardSubdomain: true` — see [gitops/charts/fleetros/charts/customer/values.yaml](gitops/charts/fleetros/charts/customer/values.yaml)), so Traefik routes any `*.portal.<domain>` host to the same Service and cert-manager mints a wildcard SAN on `fleetros-customer-tls`.
+
+### Local: add the slug to `/etc/hosts`
+
+```bash
+# Run WITHOUT sudo — the recipe sudoes internally so multipass can still
+# query the VM IP under your user. Pass space-separated slugs.
+make local-hosts-install LOCAL_TENANT_HOSTS="tripz-car-rental acme-rentals"
+
+# Verify
+getent hosts tripz-car-rental.portal.fleetros.local
+curl -kI https://tripz-car-rental.portal.fleetros.local/
+```
+
+Append every newly published slug to `LOCAL_TENANT_HOSTS` and re-run the target. The line in `/etc/hosts` is rewritten in place (matched by the trailing `# fleetros-local` comment).
+
+### Why this is needed in local but not in production
+
+| Layer            | Local (`fleetros.local`)                                              | Prod (`fleetros.example`)                                                    |
+| ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **DNS**          | `/etc/hosts` — **cannot wildcard**, one literal name per entry        | Real DNS provider — single `*.portal.fleetros.example` A record covers all   |
+| **TLS issuer**   | mkcert root CA (`ClusterIssuer` kind: ca) — signs any SAN, incl. `*.` | Let's Encrypt **DNS-01** ACME — only DNS-01 can issue wildcard certs         |
+| **Per-tenant**   | Edit `/etc/hosts` after each publish                                  | Zero work — wildcard DNS + wildcard cert cover every new slug automatically  |
+
+So the manual hosts step is purely a workaround for the static, non-wildcard `/etc/hosts` file. In prod, once the wildcard A record and the LE DNS-01 issuer are in place (see [infra/ansible/group_vars/prod/main.yml](infra/ansible/group_vars/prod/main.yml) and [infra/ansible/roles/bootstrap/templates/cluster-issuer.yaml.j2](infra/ansible/roles/bootstrap/templates/cluster-issuer.yaml.j2)), publishing a tenant requires no infrastructure change at all.
+
+### Persistence
+
+Published sites are written to `/app/public/sites/<slug>` inside the pod. That path is backed by a `ReadWriteOnce` PVC (`fleetros-customer-sites`, default 5Gi, `local-path` storage class on k3s) so they survive pod restarts. Override size/storage class in `customer.persistence` per environment.
+
+> If you scale `customer` beyond 1 replica in prod, switch `persistence.accessModes` to `ReadWriteMany` and use an RWX storage class (NFS, Longhorn, …) — otherwise different replicas serve different copies.

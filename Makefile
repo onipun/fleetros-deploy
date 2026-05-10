@@ -256,6 +256,12 @@ local-hosts-print: ## Print /etc/hosts line for *.fleetros.local (copy to your h
 
 local-hosts-install: ## Install/refresh /etc/hosts entries for *.fleetros.local (sudo)
 	@VM_IP=$$(multipass info $(VM_NAME) | awk '/IPv4/ {print $$2; exit}'); \
+	if [ -z "$$VM_IP" ]; then \
+	  echo "ERROR: could not determine VM IP via 'multipass info $(VM_NAME)'."; \
+	  echo "Run this target WITHOUT sudo (it will sudo internally), and make sure"; \
+	  echo "you've authenticated multipass for your user (see 'multipass authenticate')."; \
+	  exit 1; \
+	fi; \
 	HOSTS=$$(for h in $(LOCAL_HOSTS); do echo -n "$$h.fleetros.local "; done); \
 	TENANTS=$$(for t in $(LOCAL_TENANT_HOSTS); do echo -n "$$t.portal.fleetros.local "; done); \
 	LINE="$$VM_IP $$HOSTS$$TENANTS# fleetros-local"; \
