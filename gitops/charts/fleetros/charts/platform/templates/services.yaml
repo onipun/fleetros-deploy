@@ -46,6 +46,31 @@ spec:
         checksum/logback-config: {{ include (print $.Template.BasePath "/logging-configmap.yaml") $ | sha256sum }}
       {{- end }}
     spec:
+      {{- if $.Values.logging.enabled }}
+      # hostPath volumes are created root-owned 0755; Spring Boot pods run
+      # as a non-root user (e.g. UID 100 in spring/openjdk images) and
+      # cannot create the daily subdirectories. Fix perms once on pod
+      # start so Logback's TimeBasedRollingPolicy can write its files.
+      initContainers:
+        - name: fix-log-perms
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p {{ $.Values.logging.containerPath | default "/var/log/fleetros" }}
+              # Recursive: date subdirectories may have been created earlier
+              # by pods running under a different non-root UID (image authors
+              # pick different users \u2014 spring uid 100, cnb uid 1000, etc.),
+              # which would otherwise block writes from the new pod.
+              chmod -R 0777 {{ $.Values.logging.containerPath | default "/var/log/fleetros" }}
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: app-logs
+              mountPath: {{ $.Values.logging.containerPath | default "/var/log/fleetros" }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: "{{ $svc.image }}:{{ $svc.tag }}"
@@ -75,6 +100,13 @@ spec:
             - name: LOG_DIR
               value: {{ $.Values.logging.containerPath | default "/var/log/fleetros" | quote }}
             - name: LOG_LEVEL
+              value: {{ $.Values.logging.level | default "ERROR" | quote }}
+            # Spring Boot binds LOGGING_LEVEL_ROOT \u2192 logging.level.root with
+            # higher precedence than application.yml. Without this, per-app
+            # `logging.level.*` properties in src/main/resources/application.yml
+            # would override the root level set in logback-spring.xml and we'd
+            # still see INFO/DEBUG lines on disk.
+            - name: LOGGING_LEVEL_ROOT
               value: {{ $.Values.logging.level | default "ERROR" | quote }}
             - name: LOG_RETENTION_DAYS
               value: {{ $.Values.logging.retentionDays | default 7 | quote }}
