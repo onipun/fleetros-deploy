@@ -146,3 +146,25 @@ traefik:
   ingress:
     enabled: false
     host: traefik
+
+# Observability glue subchart. The Prometheus / Grafana / Loki backends
+# themselves are installed by Ansible (CRD ordering reasons — see
+# infra/ansible/roles/bootstrap/tasks/main.yml). This subchart only ships
+# ServiceMonitors, Grafana dashboards and the Grafana Ingress.
+monitoring:
+  enabled: true
+  namespace: monitoring
+  traefik:
+    serviceMonitor:
+      enabled: true
+      namespace: kube-system
+      serviceName: traefik-metrics
+      port: metrics
+      interval: 30s
+  ingress:
+    enabled: false
+    host: grafana
+    serviceName: kube-prometheus-stack-grafana
+    servicePort: 80
+  dashboards:
+    enabled: true

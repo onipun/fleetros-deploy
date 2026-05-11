@@ -1,0 +1,21 @@
+{{- if .Values.traefik.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: traefik
+  namespace: {{ .Values.namespace }}
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.traefik.serviceMonitor.namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+      app.kubernetes.io/instance: traefik-kube-system
+  endpoints:
+    - port: {{ .Values.traefik.serviceMonitor.port }}
+      path: /metrics
+      interval: {{ .Values.traefik.serviceMonitor.interval }}
+{{- end }}

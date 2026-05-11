@@ -22,6 +22,8 @@
     helm repo add jetstack https://charts.jetstack.io
     helm repo add argo https://argoproj.github.io/argo-helm
     helm repo add stackgres-charts https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo add grafana https://grafana.github.io/helm-charts
     helm repo update
   args:
     executable: /bin/bash
@@ -314,3 +316,275 @@
   ansible.builtin.file:
     path: /tmp/fleetros-secrets.yaml
     state: absent
+
+# ---------------------------------------------------------------------------
+# Observability stack (Prometheus + Grafana + Loki + Promtail).
+#
+# Installed by Ansible — NOT through the umbrella Argo CD app — for the
+# same reason StackGres is installed here: the umbrella chart ships
+# `ServiceMonitor`, `PrometheusRule` and grafana-dashboard ConfigMaps that
+# need the Prometheus Operator CRDs to exist first. Argo CD would
+# otherwise loop on a "no matches for kind ServiceMonitor" error.
+#
+# Retention: metrics + logs are both capped at 72h (3 days). Anything
+# older is automatically dropped — Prometheus by TSDB retention,
+# Loki by the compactor's retention_period.
+# ---------------------------------------------------------------------------
+- name: Render kube-prometheus-stack values
+  ansible.builtin.copy:
+    dest: /tmp/kube-prometheus-stack-values.yaml
+    mode: "0600"
+    content: |
+      crds:
+        enabled: true
+      alertmanager:
+        enabled: false
+      prometheusOperator:
+        admissionWebhooks:
+          # K3s' bundled admission webhook flow is fragile on first boot;
+          # patch via a Job rather than failing the install if the webhook
+          # is briefly unavailable.
+          patch:
+            enabled: true
+      prometheus:
+        prometheusSpec:
+          retention: {{ monitoring_retention }}
+          # Lets Prometheus pick up ServiceMonitors / PodMonitors from any
+          # namespace (umbrella chart drops them into `app`, `data`, etc.).
+          serviceMonitorSelectorNilUsesHelmValues: false
+          podMonitorSelectorNilUsesHelmValues: false
+          ruleSelectorNilUsesHelmValues: false
+          probeSelectorNilUsesHelmValues: false
+          # Local single-node cluster — keep the disk footprint modest.
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 5Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 400Mi
+            limits:
+              cpu: "1"
+              memory: 1500Mi
+      grafana:
+        adminUser: {{ grafana_admin_user }}
+        adminPassword: {{ grafana_admin_password }}
+        defaultDashboardsTimezone: browser
+        # The sidecar auto-discovers ConfigMaps labelled `grafana_dashboard=1`
+        # in ANY namespace; that's how the umbrella chart ships the
+        # Fleetros-specific dashboards (Traefik / Postgres slow queries).
+        sidecar:
+          dashboards:
+            enabled: true
+            label: grafana_dashboard
+            labelValue: "1"
+            searchNamespace: ALL
+            folderAnnotation: grafana_folder
+            provider:
+              foldersFromFilesStructure: true
+          datasources:
+            enabled: true
+            label: grafana_datasource
+            labelValue: "1"
+            searchNamespace: ALL
+        # Loki is provisioned as an extra datasource so the same Grafana
+        # explorer can pivot between metrics (Prometheus) and logs (Loki).
+        additionalDataSources:
+          - name: Loki
+            type: loki
+            uid: loki
+            access: proxy
+            url: http://loki-gateway.{{ monitoring_namespace }}.svc.cluster.local
+            jsonData:
+              maxLines: 1000
+        service:
+          type: ClusterIP
+        # Ingress comes from the umbrella chart (Traefik + cert-manager),
+        # keeping all *.fleetros.local hosts in one place.
+        ingress:
+          enabled: false
+        persistence:
+          enabled: true
+          storageClassName: local-path
+          size: 2Gi
+      kubeApiServer:
+        enabled: true
+      kubelet:
+        enabled: true
+      kubeControllerManager:
+        enabled: false
+      kubeScheduler:
+        enabled: false
+      kubeProxy:
+        enabled: false
+      kubeEtcd:
+        enabled: false
+      defaultRules:
+        create: true
+
+- name: Install kube-prometheus-stack
+  ansible.builtin.shell: |
+    helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      --namespace {{ monitoring_namespace }} \
+      --version {{ kube_prometheus_stack_chart_version }} \
+      -f /tmp/kube-prometheus-stack-values.yaml \
+      --wait --timeout 15m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Render Loki values (single-binary, 72h retention)
+  ansible.builtin.copy:
+    dest: /tmp/loki-values.yaml
+    mode: "0600"
+    content: |
+      deploymentMode: SingleBinary
+      loki:
+        auth_enabled: false
+        commonConfig:
+          replication_factor: 1
+        # File-system storage — local single-node cluster doesn't need
+        # MinIO/S3. Keeps the footprint to a single PVC.
+        storage:
+          type: filesystem
+        schemaConfig:
+          configs:
+            - from: "2024-01-01"
+              store: tsdb
+              object_store: filesystem
+              schema: v13
+              index:
+                prefix: index_
+                period: 24h
+        # 72h retention enforced by the compactor. After 3 days chunks +
+        # index entries are deleted.
+        limits_config:
+          retention_period: {{ monitoring_retention }}
+          reject_old_samples: true
+          reject_old_samples_max_age: 168h
+        compactor:
+          retention_enabled: true
+          delete_request_store: filesystem
+        pattern_ingester:
+          enabled: false
+        rulerConfig:
+          enable_api: false
+        # SingleBinary mode disables the per-tenant table-manager;
+        # retention is purely compactor-driven (above).
+      singleBinary:
+        replicas: 1
+        persistence:
+          enabled: true
+          storageClass: local-path
+          size: 5Gi
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+      read:
+        replicas: 0
+      write:
+        replicas: 0
+      backend:
+        replicas: 0
+      # Caches off — single-node toy cluster.
+      chunksCache:
+        enabled: false
+      resultsCache:
+        enabled: false
+      lokiCanary:
+        enabled: false
+      test:
+        enabled: false
+      monitoring:
+        selfMonitoring:
+          enabled: false
+          grafanaAgent:
+            installOperator: false
+        lokiCanary:
+          enabled: false
+      gateway:
+        enabled: true
+        replicas: 1
+
+- name: Install Loki (logs backend with 72h retention)
+  ansible.builtin.shell: |
+    helm upgrade --install loki grafana/loki \
+      --namespace {{ monitoring_namespace }} \
+      --version {{ loki_chart_version }} \
+      -f /tmp/loki-values.yaml \
+      --wait --timeout 10m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Render Promtail values (ship all pod logs into Loki)
+  ansible.builtin.copy:
+    dest: /tmp/promtail-values.yaml
+    mode: "0600"
+    content: |
+      config:
+        clients:
+          - url: http://loki-gateway.{{ monitoring_namespace }}.svc.cluster.local/loki/api/v1/push
+        snippets:
+          # Parse Traefik JSON access log lines into Loki labels. Other
+          # containers fall through to the default `cri` stage applied by
+          # the chart itself, so we don't need to declare it here.
+          extraRelabelConfigs: []
+          pipelineStages:
+            - cri: {}
+            - match:
+                selector: '{container="traefik"}'
+                stages:
+                  - json:
+                      expressions:
+                        request_method: RequestMethod
+                        request_path: RequestPath
+                        downstream_status: DownstreamStatus
+                        duration_ms: Duration
+                        router_name: RouterName
+                        service_name: ServiceName
+                  - labels:
+                      router_name:
+                      service_name:
+                      downstream_status:
+      serviceMonitor:
+        enabled: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+- name: Install Promtail (log shipper)
+  ansible.builtin.shell: |
+    helm upgrade --install promtail grafana/promtail \
+      --namespace {{ monitoring_namespace }} \
+      --version {{ promtail_chart_version }} \
+      -f /tmp/promtail-values.yaml \
+      --wait --timeout 10m
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Clean up rendered monitoring values
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/kube-prometheus-stack-values.yaml
+    - /tmp/loki-values.yaml
+    - /tmp/promtail-values.yaml

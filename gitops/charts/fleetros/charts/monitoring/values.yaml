@@ -1,0 +1,32 @@
+# Monitoring glue — assumes kube-prometheus-stack + Loki + Promtail were
+# already installed by the Ansible bootstrap (infra/ansible/roles/bootstrap).
+# This subchart only ships cluster-scoped extras: ServiceMonitors that
+# Argo CD must reconcile alongside application config, Grafana dashboards
+# (auto-discovered by the kube-prometheus-stack sidecar via the
+# `grafana_dashboard=1` label), and the Grafana Ingress.
+enabled: true
+namespace: monitoring
+
+traefik:
+  serviceMonitor:
+    enabled: true
+    namespace: kube-system
+    serviceName: traefik-metrics
+    port: metrics
+    interval: 30s
+
+postgres:
+  # StackGres already auto-creates a ServiceMonitor when
+  # `prometheusAutobind: true` is set on the SGCluster. Nothing to ship
+  # here, but the flag is kept for documentation / future overrides.
+  serviceMonitor:
+    enabled: false
+
+ingress:
+  enabled: false
+  host: grafana
+  serviceName: kube-prometheus-stack-grafana
+  servicePort: 80
+
+dashboards:
+  enabled: true

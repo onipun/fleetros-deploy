@@ -114,6 +114,19 @@ local-stackgres-ui: ## Print the StackGres Web UI URL + admin credentials
 local-stackgres-portforward: ## Port-forward StackGres UI to https://localhost:8843
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n stackgres port-forward svc/stackgres-restapi 8843:443
 
+local-grafana-ui: ## Print Grafana URL + admin credentials
+	@USER=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring get secret kube-prometheus-stack-grafana \
+		-o jsonpath='{.data.admin-user}' 2>/dev/null | base64 -d); \
+	PW=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring get secret kube-prometheus-stack-grafana \
+		-o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d); \
+	echo "Grafana UI:   https://grafana.fleetros.local"; \
+	echo "Username:     $$USER"; \
+	echo "Password:     $$PW"; \
+	echo "Dashboard:    Fleetros / Fleetros — Traefik & Postgres long/avg queries"
+
+local-grafana-portforward: ## Port-forward Grafana to http://localhost:3000
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
@@ -243,7 +256,7 @@ local-logs-customer: ## Tail fleetros-customer logs
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -f deploy/fleetros-customer --max-log-requests=10
 
 
-LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres
+LOCAL_HOSTS := app api portal reporting mail argocd customer-api auth traefik stackgres grafana
 # Published tenant subdomains for the website-builder. Append slugs here as
 # you publish them (e.g. `LOCAL_TENANT_HOSTS := tripz-car-rental acme-rentals`)
 # and re-run `make local-hosts-install`. /etc/hosts can't wildcard.

@@ -1,12 +1,21 @@
-# Reconfigure the K3s-bundled Traefik to expose its dashboard.
-# K3s watches /var/lib/rancher/k3s/server/manifests/ and applies HelmChartConfig
-# overrides to its bundled Helm charts.
+# Reconfigure the K3s-bundled Traefik to expose its dashboard, Prometheus
+# metrics and JSON access logs (consumed by Loki for the 3-day-retention
+# log pipeline).
 #
-# - --api.dashboard=true    : enable the Traefik dashboard handler
-# - --api.insecure=true     : serve the dashboard on the `traefik` entrypoint (:9000)
-#                             (safe for local; we still front it with TLS via Ingress)
-# - ports.traefik.expose    : add port 9000 to the LoadBalancer service so an
-#                             Ingress can reach the dashboard
+# - --api.dashboard=true     : enable the dashboard handler.
+# - --api.insecure=true      : serve the dashboard on the `traefik`
+#                              entrypoint (:9000). Local-only convenience;
+#                              the public URL is fronted by Traefik+TLS.
+# - metrics.prometheus       : expose Prometheus metrics on a dedicated
+#                              `metrics` entrypoint (:9100). The chart
+#                              creates a separate `traefik-metrics` Service
+#                              when `metrics.prometheus.service.enabled=true`
+#                              so the kube-prometheus-stack ServiceMonitor
+#                              can scrape it without mixing with user traffic.
+# - logs.access              : emit access logs as JSON on stdout. Promtail
+#                              tails the container log file and ships it to
+#                              Loki; Loki's compactor drops entries older
+#                              than 72h (see monitoring role).
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -21,3 +30,35 @@ spec:
       traefik:
         expose:
           default: true
+      metrics:
+        # Container-side only. We intentionally DO NOT expose this on the
+        # traefik LoadBalancer Service — K3s' klipper-lb would bind
+        # hostPort 9100, colliding with kube-prometheus-stack's
+        # node-exporter DaemonSet (which also wants host 9100). Scraping
+        # works fine through the chart-created `traefik-metrics`
+        # ClusterIP Service (see metrics.prometheus.service below).
+        port: 9100
+        exposedPort: 9100
+        protocol: TCP
+        expose:
+          default: false
+    metrics:
+      prometheus:
+        entryPoint: metrics
+        addEntryPointsLabels: true
+        addRoutersLabels: true
+        addServicesLabels: true
+        service:
+          enabled: true
+    logs:
+      general:
+        format: json
+        level: INFO
+      access:
+        enabled: true
+        format: json
+        fields:
+          general:
+            defaultmode: keep
+          headers:
+            defaultmode: drop

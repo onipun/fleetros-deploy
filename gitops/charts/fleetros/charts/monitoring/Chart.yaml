@@ -1,0 +1,5 @@
+apiVersion: v2
+name: monitoring
+description: Fleetros monitoring glue — ServiceMonitors, Grafana dashboards, Grafana ingress
+type: application
+version: 0.1.0

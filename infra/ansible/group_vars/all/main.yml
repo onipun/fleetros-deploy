@@ -30,6 +30,20 @@ stackgres_namespace: stackgres
 # wanted. Normal access goes through the Ingress at https://stackgres.<domain>.
 stackgres_ui_nodeport: 30081
 
+# Observability stack — kube-prometheus-stack (Prometheus + Grafana +
+# Prometheus Operator) plus Loki for logs and Promtail for log shipping.
+# All retention is capped at 72h per the operator brief ("log just need to
+# stay 3 DAYS and replaced with the new one"); same window is applied to
+# Prometheus TSDB so metric/log timelines stay aligned in Grafana.
+monitoring_namespace: monitoring
+kube_prometheus_stack_chart_version: "65.5.1"
+loki_chart_version: "6.16.0"
+promtail_chart_version: "6.16.6"
+monitoring_retention: "72h"
+grafana_admin_user: "admin"
+# Local-only default; production overrides via group_vars/prod/vault.yml.
+grafana_admin_password: "fleetros-local"
+
 # Gitops repo (where Argo CD pulls from). Override per-env in inventory if you split repos later.
 gitops_repo_url: "https://github.com/YOUR_ORG/fleetros-deploy.git"
 gitops_repo_revision: "HEAD"

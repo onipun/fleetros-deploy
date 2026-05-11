@@ -31,6 +31,17 @@ spec:
   postgresql.conf:
     shared_buffers: "256MB"
     max_connections: "200"
+    # Slow-query observability: pg_stat_statements records the planning
+    # and execution stats per normalised statement. The Grafana
+    # "Postgres — slow queries" dashboard reads `pg_stat_statements_*`
+    # metrics that StackGres' bundled exporter publishes when this
+    # extension is preloaded and `track=all`.
+    shared_preload_libraries: "pg_stat_statements"
+    pg_stat_statements.track: "all"
+    pg_stat_statements.max: "5000"
+    # Mark statements running longer than 1s in pg_stat_activity so the
+    # dashboard's "currently long-running" panel has something to chart.
+    log_min_duration_statement: "1000"
 ---
 apiVersion: stackgres.io/v1
 kind: SGPoolingConfig

@@ -1,0 +1,181 @@
+{{- if .Values.dashboards.enabled }}
+# The kube-prometheus-stack Grafana sidecar watches ConfigMaps labelled
+# `grafana_dashboard=1` in any namespace and provisions them on the fly.
+# We drop the dashboard JSON into a single ConfigMap; renaming / editing
+# it triggers an automatic reload (no Grafana restart required).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleetros-observability-dashboard
+  namespace: {{ .Values.namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Fleetros"
+data:
+  fleetros-observability.json: |-
+    {
+      "title": "Fleetros — Traefik & Postgres long/avg queries",
+      "uid": "fleetros-obs",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "tags": ["fleetros", "traefik", "postgres"],
+      "templating": { "list": [] },
+      "panels": [
+        {
+          "type": "row",
+          "title": "Traefik",
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+          "collapsed": false,
+          "id": 100
+        },
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Traefik — p99 long request duration (per service)",
+          "description": "Top latency requests over time. Sourced from histogram_quantile on traefik_service_request_duration_seconds_bucket. High values = long requests.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 1, "w": 12, "h": 9 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "min": 0 },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["max", "mean"] },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "p99 {{`{{`}}service{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Traefik — avg request duration (per service)",
+          "description": "rate(sum) / rate(count) of traefik_service_request_duration_seconds. Useful for spotting drift in average latency.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 12, "y": 1, "w": 12, "h": 9 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "min": 0 },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (service) (rate(traefik_service_request_duration_seconds_sum[5m])) / sum by (service) (rate(traefik_service_request_duration_seconds_count[5m]))",
+              "legendFormat": "avg {{`{{`}}service{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "Traefik — slowest access log lines (Loki, last 15m)",
+          "description": "JSON access logs filtered by Duration > 1s (1e9 ns).",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "dedupStrategy": "none"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "{namespace=\"kube-system\", container=\"traefik\"} | json | Duration > 1000000000",
+              "queryType": "range"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "PostgreSQL (StackGres)",
+          "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 },
+          "collapsed": false,
+          "id": 200
+        },
+        {
+          "id": 4,
+          "type": "logs",
+          "title": "Postgres — slow query log (>1s, Loki, last 1h)",
+          "description": "PostgreSQL logs every statement slower than log_min_duration_statement (1000ms). Captured by Promtail from the patroni container stdout and stored in Loki for 72h.",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "x": 0, "y": 19, "w": 24, "h": 10 },
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "dedupStrategy": "exact"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "{namespace=\"data\"} |= \"duration:\" |~ \"statement:\\\\s*(SELECT|UPDATE|INSERT|DELETE|WITH)\"",
+              "queryType": "range"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Postgres — current longest running query (max tx duration)",
+          "description": "pg_stat_activity_max_tx_duration: longest live transaction. Spikes here = an in-flight long query right now.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 29, "w": 12, "h": 8 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "min": 0 },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max by (datname, state) (pg_stat_activity_max_tx_duration)",
+              "legendFormat": "{{`{{`}}datname{{`}}`}} / {{`{{`}}state{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Postgres — slow-query rate per minute (avg observability proxy)",
+          "description": "Count of slow-query log lines per minute, grouped by database container. Acts as the 'avg query time' proxy when pg_stat_statements isn't enabled on the StackGres exporter.",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "x": 12, "y": 29, "w": 12, "h": 8 },
+          "fieldConfig": {
+            "defaults": { "unit": "ops", "min": 0 },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "sum by (container) (rate({namespace=\"data\"} |= \"duration:\" |~ \"statement:\\\\s*(SELECT|UPDATE|INSERT|DELETE|WITH)\"[1m]))",
+              "legendFormat": "{{`{{`}}container{{`}}`}}"
+            }
+          ]
+        }
+      ]
+    }
+{{- end }}

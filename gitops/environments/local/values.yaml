@@ -33,6 +33,11 @@ traefik:
     enabled: true
     host: traefik       # https://traefik.fleetros.local
 
+monitoring:
+  ingress:
+    enabled: true
+    host: grafana       # https://grafana.fleetros.local
+
 platform:
   domain: fleetros.local
   mailpit:

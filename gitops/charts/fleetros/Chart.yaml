@@ -18,3 +18,7 @@ dependencies:
   - name: customer
     version: 0.1.0
     repository: "file://charts/customer"
+  - name: monitoring
+    version: 0.1.0
+    repository: "file://charts/monitoring"
+    condition: monitoring.enabled
