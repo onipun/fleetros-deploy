@@ -19,6 +19,28 @@ defaults:
 
 services: {}   # populated by parent (umbrella) values
 
+# Centralised file logging for every Spring Boot service.
+#
+# All pods mount a shared logback config (templates/logging-configmap.yaml)
+# plus a host-path volume so error logs survive pod restarts and you can
+# query them on the node:
+#
+#   /var/log/fleetros/<yyyy-MM-dd>/<service>.log
+#
+# e.g. /var/log/fleetros/2026-05-11/backoffice.log
+#
+# Root log level is ERROR (configurable), retentionDays controls how many
+# date folders Logback keeps before pruning the oldest on roll-over.
+#
+# NOTE: hostPath is single-node. On a multi-node cluster point hostPath
+# at an NFS mount or replace with an RWX PVC.
+logging:
+  enabled: true
+  level: ERROR
+  retentionDays: 7
+  hostPath: /var/log/fleetros        # path on the K8s node
+  containerPath: /var/log/fleetros   # mount point inside each pod
+
 mailpit:
   enabled: false       # off by default; enable in local overlay
   image: axllent/mailpit

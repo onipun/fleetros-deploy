@@ -1,0 +1,55 @@
+{{- if .Values.logging.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spring-logback-config
+  namespace: {{ .Values.namespace }}
+data:
+  # Centralised Logback config consumed by every Spring Boot pod via
+  # LOGGING_CONFIG=file:/etc/fleetros/logback-spring.xml.
+  #
+  # Behaviour:
+  #   * Root logger level = ${LOG_LEVEL:-ERROR}  → only error lines hit disk.
+  #   * Rolling file appender writes the *current* day's log directly into
+  #     a date-named directory:
+  #         ${LOG_DIR}/<yyyy-MM-dd>/<APP_NAME>.log
+  #     so each calendar day has its own folder containing one file per
+  #     service. Logback creates the date directory automatically.
+  #   * <maxHistory>${LOG_RETENTION_DAYS:-7}</maxHistory> drops directories
+  #     older than the retention window on roll-over.
+  #   * Console appender keeps `kubectl logs` working (also error-only).
+  logback-spring.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+      <property name="APP_NAME" value="${APP_NAME:-app}"/>
+      <property name="LOG_DIR"  value="${LOG_DIR:-/var/log/fleetros}"/>
+      <property name="LOG_LEVEL" value="${LOG_LEVEL:-ERROR}"/>
+      <property name="LOG_RETENTION_DAYS" value="${LOG_RETENTION_DAYS:-7}"/>
+
+      <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+      </appender>
+
+      <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+          <!-- Active file lives inside the dated directory; on midnight
+               rollover Logback simply starts writing into the next day's
+               directory. No `<file>` element on purpose, so there is no
+               "current.log" sitting outside the day folders. -->
+          <fileNamePattern>${LOG_DIR}/%d{yyyy-MM-dd}/${APP_NAME}.log</fileNamePattern>
+          <maxHistory>${LOG_RETENTION_DAYS}</maxHistory>
+          <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+        <encoder>
+          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n%rEx</pattern>
+        </encoder>
+      </appender>
+
+      <root level="${LOG_LEVEL}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+      </root>
+    </configuration>
+{{- end }}

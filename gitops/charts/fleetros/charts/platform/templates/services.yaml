@@ -40,6 +40,11 @@ spec:
       labels:
         app: {{ $name }}
         app.kubernetes.io/component: backend
+      {{- if $.Values.logging.enabled }}
+      annotations:
+        # Roll pods when the shared logback config changes.
+        checksum/logback-config: {{ include (print $.Template.BasePath "/logging-configmap.yaml") $ | sha256sum }}
+      {{- end }}
     spec:
       containers:
         - name: {{ $name }}
@@ -58,6 +63,22 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            {{- if $.Values.logging.enabled }}
+            # Centralised logging — point Spring Boot at the shared logback
+            # config mounted from the spring-logback-config ConfigMap.
+            # Disable per service by setting `logging.enabled: false` under
+            # platform values, or override APP_NAME/LOG_LEVEL via $svc.env.
+            - name: LOGGING_CONFIG
+              value: "file:/etc/fleetros/logback-spring.xml"
+            - name: APP_NAME
+              value: {{ $name | quote }}
+            - name: LOG_DIR
+              value: {{ $.Values.logging.containerPath | default "/var/log/fleetros" | quote }}
+            - name: LOG_LEVEL
+              value: {{ $.Values.logging.level | default "ERROR" | quote }}
+            - name: LOG_RETENTION_DAYS
+              value: {{ $.Values.logging.retentionDays | default 7 | quote }}
+            {{- end }}
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef: { name: postgres-creds, key: POSTGRES_USER }
@@ -75,10 +96,19 @@ spec:
                 name: app-secrets
           resources:
             {{- toYaml ($svc.resources | default $.Values.defaults.resources) | nindent 12 }}
-          {{- if and $svc.persistence $svc.persistence.enabled }}
+          {{- if or (and $svc.persistence $svc.persistence.enabled) $.Values.logging.enabled }}
           volumeMounts:
+            {{- if and $svc.persistence $svc.persistence.enabled }}
             - name: {{ $svc.persistence.name | default "uploads" }}
               mountPath: {{ $svc.persistence.mountPath | default "/app/uploads" }}
+            {{- end }}
+            {{- if $.Values.logging.enabled }}
+            - name: logback-config
+              mountPath: /etc/fleetros
+              readOnly: true
+            - name: app-logs
+              mountPath: {{ $.Values.logging.containerPath | default "/var/log/fleetros" }}
+            {{- end }}
           {{- end }}
           startupProbe:
             tcpSocket:
@@ -94,11 +124,27 @@ spec:
               port: {{ $svc.port }}
             periodSeconds: 30
             failureThreshold: 3
-      {{- if and $svc.persistence $svc.persistence.enabled }}
+      {{- if or (and $svc.persistence $svc.persistence.enabled) $.Values.logging.enabled }}
       volumes:
+        {{- if and $svc.persistence $svc.persistence.enabled }}
         - name: {{ $svc.persistence.name | default "uploads" }}
           persistentVolumeClaim:
             claimName: {{ $name }}-{{ $svc.persistence.name | default "uploads" }}
+        {{- end }}
+        {{- if $.Values.logging.enabled }}
+        # Shared logback config — ROOT level ERROR, daily dir rotation,
+        # N-day retention. See templates/logging-configmap.yaml.
+        - name: logback-config
+          configMap:
+            name: spring-logback-config
+        # Logs persist on the node so they survive pod restarts and you can
+        # query them by SSHing into the host (single-node assumption — for
+        # multi-node clusters swap this for an RWX PVC).
+        - name: app-logs
+          hostPath:
+            path: {{ $.Values.logging.hostPath | default "/var/log/fleetros" }}
+            type: DirectoryOrCreate
+        {{- end }}
       {{- end }}
 ---
 apiVersion: v1
