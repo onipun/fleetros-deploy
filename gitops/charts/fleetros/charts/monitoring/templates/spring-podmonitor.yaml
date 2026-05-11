@@ -25,11 +25,16 @@ spec:
       interval: {{ .Values.springApps.podMonitor.interval }}
       scrapeTimeout: {{ .Values.springApps.podMonitor.scrapeTimeout }}
       # Keep the pod name as `instance` so panels can identify replicas.
+      # `action: replace` is the operator default — declared here explicitly so
+      # the live spec matches what Argo renders (otherwise selfHeal sees drift).
       relabelings:
-        - sourceLabels: [__meta_kubernetes_pod_label_app]
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_label_app]
           targetLabel: app
-        - sourceLabels: [__meta_kubernetes_pod_name]
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_name]
           targetLabel: instance
-        - sourceLabels: [__meta_kubernetes_namespace]
+        - action: replace
+          sourceLabels: [__meta_kubernetes_namespace]
           targetLabel: namespace
 {{- end }}
