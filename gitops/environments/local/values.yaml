@@ -45,6 +45,11 @@ platform:
     ingressHost: mail   # https://mail.fleetros.local for the web UI
   defaults:
     replicas: 1
+    # Local always uses the floating `:latest` tag, so force a fresh registry
+    # pull on every pod restart. Without `Always`, `IfNotPresent` makes
+    # `kubectl rollout restart` run the cached old image — pods come up green
+    # but with stale code.
+    imagePullPolicy: Always
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits:   { cpu: 500m, memory: 512Mi }
