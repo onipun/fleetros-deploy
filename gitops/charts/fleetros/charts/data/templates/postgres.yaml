@@ -41,7 +41,10 @@ spec:
     pg_stat_statements.max: "5000"
     # Mark statements running longer than 1s in pg_stat_activity so the
     # dashboard's "currently long-running" panel has something to chart.
-    log_min_duration_statement: "1000"
+    # Use the canonical unit ("1s") rather than a bare millisecond count
+    # ("1000"); the StackGres operator normalises the value on the live
+    # object, which would otherwise show as perpetual drift to Argo.
+    log_min_duration_statement: "1s"
 ---
 apiVersion: stackgres.io/v1
 kind: SGPoolingConfig
