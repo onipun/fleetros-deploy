@@ -155,6 +155,7 @@ platform:
       env:
         SPRING_PROFILES_ACTIVE: docker
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice
+        CUSTOMER_PORTAL_KEYCLOAK_BASE_URL: http://keycloak.data.svc.cluster.local:8080
         CUSTOMER_KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
         CUSTOMER_KEYCLOAK_REALM: carrental-customers
         CUSTOMER_KEYCLOAK_CLIENT_ID: customer-portal-client
