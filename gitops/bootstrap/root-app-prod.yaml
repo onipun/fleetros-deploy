@@ -54,7 +54,23 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      # Strip fields listed in `ignoreDifferences` from the manifest Argo
+      # applies, not just from the diff. Required for PVC.spec.volumeName:
+      # the controller stamps it post-bind and the spec is immutable, so
+      # re-applying without this option fails with "spec is immutable after
+      # creation" even though the diff is suppressed.
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: ""
       kind: Secret
       jsonPointers: ["/data"]
+    # Once a PVC is Bound, kube-controller-manager stamps `spec.volumeName`
+    # with the auto-provisioned PV name. PVC spec is immutable after
+    # creation (except resources.requests / volumeAttributesClassName), so
+    # any re-apply by Argo CD that omits `volumeName` is rejected with
+    # "spec is immutable after creation". Ignore the controller-managed
+    # field so server-side apply leaves it alone.
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec/volumeName
