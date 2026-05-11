@@ -22,6 +22,20 @@ postgres:
   serviceMonitor:
     enabled: false
 
+# PodMonitor that scrapes /actuator/prometheus on every Spring Boot backend
+# pod managed by the `platform` subchart (label
+# `app.kubernetes.io/component: backend`). The platform subchart names the
+# container port `http`, so `targetPort: http` resolves regardless of
+# per-service port number.
+springApps:
+  podMonitor:
+    enabled: true
+    # Match the same namespace the platform subchart deploys to.
+    namespace: app
+    path: /actuator/prometheus
+    interval: 15s
+    scrapeTimeout: 10s
+
 ingress:
   enabled: false
   host: grafana

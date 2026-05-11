@@ -78,6 +78,26 @@ else
   fail "Prometheus is not scraping traefik (check ServiceMonitor selector)"
 fi
 
+# Spring Boot apps (Micrometer/Prometheus). The PodMonitor selects pods
+# labelled `app.kubernetes.io/component=backend`; we only assert that the
+# PodMonitor exists, its dashboard ConfigMap is labelled for the Grafana
+# sidecar, and that Prometheus has at least *discovered* the pool. We
+# deliberately do NOT assert all targets are `up` because the cluster may
+# still be running an older container image that doesn't expose
+# /actuator/prometheus — that turns green on the next image rebuild.
+kubectl -n monitoring get podmonitor fleetros-spring-apps >/dev/null 2>&1 \
+  && pass "PodMonitor fleetros-spring-apps" || fail "PodMonitor fleetros-spring-apps missing"
+kubectl -n monitoring get cm fleetros-spring-dashboard \
+  -o jsonpath='{.metadata.labels.grafana_dashboard}' 2>/dev/null | grep -q '^1$' \
+  && pass "Spring dashboard ConfigMap labelled" || fail "Spring dashboard ConfigMap missing/unlabelled"
+if kubectl -n monitoring exec sts/prometheus-kube-prometheus-stack-prometheus -c prometheus -- \
+    wget -q -O- http://localhost:9090/api/v1/targets 2>/dev/null \
+    | grep -qE '"scrapePool":"podMonitor/monitoring/fleetros-spring-apps/'; then
+  pass "Prometheus has discovered Spring backend pods"
+else
+  fail "Prometheus has not discovered Spring backend pods"
+fi
+
 if [[ "$FAILED" == "1" ]]; then
   echo -e "\n\033[31mValidation FAILED\033[0m"; exit 1
 fi

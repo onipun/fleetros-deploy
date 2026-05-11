@@ -1,0 +1,232 @@
+{{- if .Values.dashboards.enabled }}
+# Auto-loaded by the kube-prometheus-stack Grafana sidecar (label
+# `grafana_dashboard=1`). Renders JVM + HTTP controller metrics emitted
+# by Spring Boot Actuator / Micrometer on every backend pod scraped via
+# the PodMonitor in spring-podmonitor.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleetros-spring-dashboard
+  namespace: {{ .Values.namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Fleetros"
+data:
+  fleetros-spring.json: |-
+    {
+      "title": "Fleetros — Spring Boot apps (JVM + HTTP controllers)",
+      "uid": "fleetros-spring",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "tags": ["fleetros", "spring", "jvm", "micrometer"],
+      "templating": {
+        "list": [
+          {
+            "name": "application",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "label": "Application",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "query": "label_values(jvm_memory_used_bytes, application)",
+            "current": { "selected": false, "text": "All", "value": "$__all" }
+          },
+          {
+            "name": "instance",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "label": "Pod",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "query": "label_values(jvm_memory_used_bytes{application=~\"$application\"}, instance)",
+            "current": { "selected": false, "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100, "type": "row", "title": "Resource usage (per pod)",
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false
+        },
+        {
+          "id": 1, "type": "timeseries",
+          "title": "CPU usage — process",
+          "description": "Fraction of all available cores currently used by the JVM process (0..1). Sourced from Micrometer's `process_cpu_usage`.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "process_cpu_usage{application=~\"$application\", instance=~\"$instance\"}",
+              "legendFormat": "{{`{{`}}application{{`}}`}} / {{`{{`}}instance{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 2, "type": "timeseries",
+          "title": "Heap memory used",
+          "description": "Live heap usage from Micrometer `jvm_memory_used_bytes{area=\"heap\"}`. Compare against `jvm_memory_max_bytes` to detect leaks.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application, instance) (jvm_memory_used_bytes{application=~\"$application\", instance=~\"$instance\", area=\"heap\"})",
+              "legendFormat": "{{`{{`}}application{{`}}`}} / {{`{{`}}instance{{`}}`}} used"
+            },
+            {
+              "refId": "B",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application, instance) (jvm_memory_max_bytes{application=~\"$application\", instance=~\"$instance\", area=\"heap\"})",
+              "legendFormat": "{{`{{`}}application{{`}}`}} / {{`{{`}}instance{{`}}`}} max"
+            }
+          ]
+        },
+        {
+          "id": 3, "type": "timeseries",
+          "title": "JVM threads (live)",
+          "description": "Number of live application threads. A steadily growing trend often indicates a thread leak.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 9, "w": 12, "h": 7 },
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "jvm_threads_live_threads{application=~\"$application\", instance=~\"$instance\"}",
+              "legendFormat": "{{`{{`}}application{{`}}`}} / {{`{{`}}instance{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries",
+          "title": "GC pause time (rate)",
+          "description": "Rate of cumulative GC pause time per second (sec/sec). Values approaching 1 mean the JVM is stalled in GC.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 12, "y": 9, "w": 12, "h": 7 },
+          "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application, action) (rate(jvm_gc_pause_seconds_sum{application=~\"$application\", instance=~\"$instance\"}[5m]))",
+              "legendFormat": "{{`{{`}}application{{`}}`}} / {{`{{`}}action{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 200, "type": "row", "title": "HTTP controllers",
+          "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 }, "collapsed": false
+        },
+        {
+          "id": 5, "type": "timeseries",
+          "title": "Controller — p99 latency by endpoint",
+          "description": "histogram_quantile(0.99, http_server_requests_seconds_bucket) grouped by URI template. Highlights the slowest controller endpoints.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 17, "w": 12, "h": 9 },
+          "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum by (application, uri, method, le) (rate(http_server_requests_seconds_bucket{application=~\"$application\", instance=~\"$instance\"}[5m])))",
+              "legendFormat": "{{`{{`}}application{{`}}`}} {{`{{`}}method{{`}}`}} {{`{{`}}uri{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 6, "type": "timeseries",
+          "title": "Controller — average latency by endpoint",
+          "description": "rate(http_server_requests_seconds_sum) / rate(http_server_requests_seconds_count) — true average per-request duration for each URI template.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 12, "y": 17, "w": 12, "h": 9 },
+          "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application, uri, method) (rate(http_server_requests_seconds_sum{application=~\"$application\", instance=~\"$instance\"}[5m])) / clamp_min(sum by (application, uri, method) (rate(http_server_requests_seconds_count{application=~\"$application\", instance=~\"$instance\"}[5m])), 1e-9)",
+              "legendFormat": "{{`{{`}}application{{`}}`}} {{`{{`}}method{{`}}`}} {{`{{`}}uri{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 7, "type": "table",
+          "title": "Top 10 slowest endpoints — last 5m (avg sec/req)",
+          "description": "Instant snapshot of the 10 slowest controller endpoints across the selected applications. Use it as a quick triage view.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 26, "w": 24, "h": 9 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "decimals": 4 },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Value" },
+                "properties": [ { "id": "displayName", "value": "avg sec/request" } ] }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [ { "displayName": "avg sec/request", "desc": true } ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "instant": true,
+              "format": "table",
+              "expr": "topk(10, sum by (application, method, uri) (rate(http_server_requests_seconds_sum{application=~\"$application\", instance=~\"$instance\"}[5m])) / clamp_min(sum by (application, method, uri) (rate(http_server_requests_seconds_count{application=~\"$application\", instance=~\"$instance\"}[5m])), 1e-9))"
+            }
+          ]
+        },
+        {
+          "id": 8, "type": "timeseries",
+          "title": "Throughput — requests/sec by application",
+          "description": "Sum of http_server_requests_seconds_count rate per application. Used to correlate latency spikes with load.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 0, "y": 35, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=~\"$application\", instance=~\"$instance\"}[1m]))",
+              "legendFormat": "{{`{{`}}application{{`}}`}}"
+            }
+          ]
+        },
+        {
+          "id": 9, "type": "timeseries",
+          "title": "Error rate — 5xx responses",
+          "description": "5xx responses per second, grouped by application and URI template. Cross-reference with the slow-endpoint table to catch failing controllers.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "x": 12, "y": 35, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (application, uri) (rate(http_server_requests_seconds_count{application=~\"$application\", instance=~\"$instance\", status=~\"5..\"}[5m]))",
+              "legendFormat": "{{`{{`}}application{{`}}`}} {{`{{`}}uri{{`}}`}}"
+            }
+          ]
+        }
+      ]
+    }
+{{- end }}

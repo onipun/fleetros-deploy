@@ -8,6 +8,9 @@ metadata:
   namespace: {{ $.Values.namespace }}
   labels:
     app: {{ $name }}
+    # Picked up by the PodMonitor in the `monitoring` subchart so kube-prometheus-stack
+    # scrapes /actuator/prometheus on every Spring Boot backend pod.
+    app.kubernetes.io/component: backend
   annotations:
     argocd.argoproj.io/sync-wave: {{ $svc.syncWave | default "2" | quote }}
 spec:
@@ -19,13 +22,16 @@ spec:
     metadata:
       labels:
         app: {{ $name }}
+        app.kubernetes.io/component: backend
     spec:
       containers:
         - name: {{ $name }}
           image: "{{ $svc.image }}:{{ $svc.tag }}"
           imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
           ports:
-            - containerPort: {{ $svc.port }}
+            # Named so the PodMonitor can reference it by `port: http`.
+            - name: http
+              containerPort: {{ $svc.port }}
           env:
             {{- range $k, $v := $.Values.defaults.env }}
             - name: {{ $k }}
