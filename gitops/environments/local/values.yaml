@@ -72,6 +72,16 @@ platform:
       resources:
         requests: { cpu: 100m, memory: 512Mi }
         limits:   { cpu: "1",  memory: 1536Mi }
+      # Persist uploaded vehicle/booking/offering images across pod restarts.
+      # Without this, /app/uploads is ephemeral and every restart wipes
+      # customer-uploaded media (the URLs stored in DB then 404).
+      persistence:
+        enabled: true
+        name: uploads
+        mountPath: /app/uploads
+        size: 5Gi
+        accessMode: ReadWriteOnce
+        storageClass: local-path
       env:
         SPRING_PROFILES_ACTIVE: dev
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.data.svc.cluster.local:5432/backoffice

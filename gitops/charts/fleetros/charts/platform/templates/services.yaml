@@ -1,5 +1,22 @@
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
+{{- if and $svc.persistence $svc.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-{{ $svc.persistence.name | default "uploads" }}
+  namespace: {{ $.Values.namespace }}
+spec:
+  accessModes:
+    - {{ $svc.persistence.accessMode | default "ReadWriteOnce" }}
+  {{- with $svc.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $svc.persistence.size | default "5Gi" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -58,6 +75,11 @@ spec:
                 name: app-secrets
           resources:
             {{- toYaml ($svc.resources | default $.Values.defaults.resources) | nindent 12 }}
+          {{- if and $svc.persistence $svc.persistence.enabled }}
+          volumeMounts:
+            - name: {{ $svc.persistence.name | default "uploads" }}
+              mountPath: {{ $svc.persistence.mountPath | default "/app/uploads" }}
+          {{- end }}
           startupProbe:
             tcpSocket:
               port: {{ $svc.port }}
@@ -72,6 +94,12 @@ spec:
               port: {{ $svc.port }}
             periodSeconds: 30
             failureThreshold: 3
+      {{- if and $svc.persistence $svc.persistence.enabled }}
+      volumes:
+        - name: {{ $svc.persistence.name | default "uploads" }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}-{{ $svc.persistence.name | default "uploads" }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

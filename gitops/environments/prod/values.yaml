@@ -23,7 +23,20 @@ platform:
       limits:   { cpu: 1500m, memory: 1536Mi }
   # Tags below are pinned semver — Argo CD Image Updater rewrites them via the regexp ^v\d+\.\d+\.\d+$
   services:
-    backoffice:        { enabled: true, image: so0n/car-rental-backoffice-service,        tag: v0.1.0, port: 8082, ingressHost: api,    env: { SPRING_PROFILES_ACTIVE: prod } }
+    backoffice:
+      enabled: true
+      image: so0n/car-rental-backoffice-service
+      tag: v0.1.0
+      port: 8082
+      ingressHost: api
+      env: { SPRING_PROFILES_ACTIVE: prod }
+      # Persist vehicle/booking/offering image uploads across pod restarts.
+      persistence:
+        enabled: true
+        name: uploads
+        mountPath: /app/uploads
+        size: 50Gi
+        accessMode: ReadWriteOnce
     payment:           { enabled: true, image: so0n/car-rental-payment-service,           tag: v0.1.0, port: 8085, env: { SPRING_PROFILES_ACTIVE: prod } }
     onboarding:        { enabled: true, image: so0n/car-rental-onboarding-service,        tag: v0.1.0, port: 8083, env: { SPRING_PROFILES_ACTIVE: prod } }
     pricing:           { enabled: true, image: so0n/car-rental-rental-pricing-service,    tag: v0.1.0, port: 8081, env: { SPRING_PROFILES_ACTIVE: prod } }
