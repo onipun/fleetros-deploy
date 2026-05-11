@@ -196,6 +196,7 @@ local-build-customer: ## Build fleetros-customer image with local NEXT_PUBLIC_* 
 		--build-arg NEXT_PUBLIC_RENTAL_API_HOST=https://api.fleetros.local \
 		--build-arg NEXT_PUBLIC_RENTAL_API_PORT=443 \
 		--build-arg NEXT_PUBLIC_RECEIPT_API_PORT=443 \
+		--build-arg NEXT_PUBLIC_RECEIPT_API_HOST=https://app.fleetros.local \
 		--build-arg NEXT_PUBLIC_USE_SAMPLE_DATA=false \
 		--build-arg NEXT_PUBLIC_MAX_CARS_SELECTABLE=5 \
 		-t $(CUSTOMER_IMAGE):$(CUSTOMER_TAG) \
