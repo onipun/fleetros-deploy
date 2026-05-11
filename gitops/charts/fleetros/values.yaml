@@ -24,19 +24,19 @@ data:
     majorVersion: 16
     instances: 1
     persistence:
-      size: 10Gi
+      size: 20Gi
   redis:
     enabled: true
     image: redis
     tag: "7-alpine"
     persistence:
-      size: 2Gi
+      size: 10Gi
   keycloak:
     enabled: true
     image: quay.io/keycloak/keycloak
     tag: "23.0"
     persistence:
-      size: 2Gi
+      size: 5Gi
     realmsConfigMap: keycloak-realms
 
 platform:
