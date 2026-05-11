@@ -27,12 +27,23 @@ data:
       <property name="LOG_RETENTION_DAYS" value="${LOG_RETENTION_DAYS:-7}"/>
 
       <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- Per-app application.yml files set `logging.level.com.example=INFO`
+             which Spring Boot binds on top of the root level from the XML.
+             A ThresholdFilter at the appender drops anything below ERROR
+             regardless of which logger emitted it, so the on-disk files
+             only ever contain error events. -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+          <level>${LOG_LEVEL}</level>
+        </filter>
         <encoder>
           <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
         </encoder>
       </appender>
 
       <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+          <level>${LOG_LEVEL}</level>
+        </filter>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
           <!-- Active file lives inside the dated directory; on midnight
                rollover Logback simply starts writing into the next day's
