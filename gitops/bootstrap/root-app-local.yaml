@@ -98,6 +98,10 @@ spec:
         - /spec/postgres/flavor
         # Operator pins the exact patch version (e.g. 16 -> 16.8). Let it.
         - /spec/postgres/version
+        # Operator stamps `path` and `reconciliationTimeout` into each
+        # backups entry; keep our chart minimal and ignore the injected
+        # bookkeeping fields.
+        - /spec/configurations/backups
         # Operator auto-attaches an internal `postgres-default` script and
         # adds `continueOnSGScriptError: false`. We attach our own script in
         # the chart; ignore the whole `managedSql` block so the operator
