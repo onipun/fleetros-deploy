@@ -20,6 +20,20 @@ extraHosts: []        # additional subdomain prefixes routed to the same service
 # in prod use a DNS-01 ACME issuer).
 wildcardSubdomain: true
 
+# Reverse-proxy the customer-portal Next.js routes from each tenant
+# subdomain back to the fleetros-web service. With this enabled,
+# `https://<slug>.portal.fleetros.local/portal/login?tenant_id=…` keeps the
+# tenant URL in the browser but serves the dashboard's customer-portal pages
+# (and their `/_next/*` assets) from fleetros-web. Disable to fall back to
+# pure static-site routing for every path on the subdomain.
+portalProxy:
+  enabled: true
+  service: fleetros-web
+  port: 3000
+  paths:
+    - /portal
+    - /_next
+
 # Database (StackGres-managed Postgres in the `data` namespace).
 # Credentials come from the Ansible-seeded `postgres-creds` Secret which is
 # only present in the `data` namespace, so we replicate it into `app` via the

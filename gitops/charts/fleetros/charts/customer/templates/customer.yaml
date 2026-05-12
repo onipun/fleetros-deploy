@@ -150,9 +150,28 @@ spec:
     # (e.g. tripz-car-rental.portal.fleetros.local). Single Ingress rule
     # because Traefik supports wildcard hosts; backend is the same Service —
     # the app routes by Host header / first path segment.
+    #
+    # `/portal/*` and `/_next/*` are reverse-proxied to the fleetros-web
+    # (Next.js dashboard) service so that the customer login flow renders
+    # at `https://<tenant>.portal.fleetros.local/portal/login?tenant_id=…`
+    # while the browser URL keeps the tenant subdomain. Traefik picks the
+    # longest matching path, so the `/portal` and `/_next` rules win over
+    # `/` for those prefixes. Other paths continue to serve the published
+    # static site from fleetros-customer.
     - host: "*.{{ .Values.ingressHost }}.{{ .Values.domain }}"
       http:
         paths:
+          {{- if .Values.portalProxy.enabled }}
+          {{- range .Values.portalProxy.paths }}
+          - path: {{ . | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Values.portalProxy.service }}
+                port:
+                  number: {{ $.Values.portalProxy.port }}
+          {{- end }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:
