@@ -9,6 +9,36 @@ data:
       size: 5Gi   # smaller for laptop
     cpu: "250m"
     memory: "512Mi"
+    # Daily 02:00 UTC base backup, sliding 7-day retention, written to the
+    # in-cluster MinIO (see `data.minio` below). Restore steps in README.md.
+    backups:
+      enabled: true
+      cronSchedule: "0 2 * * *"
+      retention: 7
+      compression: lz4
+      objectStorage:
+        type: s3Compatible
+        bucket: stackgres-backups
+        region: us-east-1
+        endpoint: "http://minio.data.svc.cluster.local:9000"
+        enablePathStyleAddressing: true
+        credentialsSecretName: stackgres-backup-creds
+        accessKeyIdKey: accessKeyId
+        secretAccessKeyKey: secretAccessKey
+  # In-cluster MinIO acts as the S3 endpoint for the StackGres backups
+  # above. Root credentials seed the `stackgres-backup-creds` Secret so
+  # SGObjectStorage authenticates against the same MinIO instance.
+  minio:
+    enabled: true
+    rootUser: minioadmin
+    rootPassword: minioadmin
+    bucket: stackgres-backups
+    persistence:
+      # Bind the MinIO data dir to a real path on the k3s VM so backups
+      # are inspectable / copyable from outside the cluster:
+      #   multipass shell fleetros-local
+      #   sudo ls -lh /var/lib/fleetros/stackgres-backups
+      hostPath: /var/lib/fleetros/stackgres-backups
   keycloak:
     persistence:
       size: 1Gi

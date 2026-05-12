@@ -193,3 +193,94 @@ So the manual hosts step is purely a workaround for the static, non-wildcard `/e
 Published sites are written to `/app/public/sites/<slug>` inside the pod. That path is backed by a `ReadWriteOnce` PVC (`fleetros-customer-sites`, default 5Gi, `local-path` storage class on k3s) so they survive pod restarts. Override size/storage class in `customer.persistence` per environment.
 
 > If you scale `customer` beyond 1 replica in prod, switch `persistence.accessModes` to `ReadWriteMany` and use an RWX storage class (NFS, Longhorn, …) — otherwise different replicas serve different copies.
+
+## StackGres backups (view / restore)
+
+StackGres only supports S3-compatible object storage as a backup target — there is no filesystem driver. In **local**, the `data` subchart ships a single-node MinIO whose data dir is a **hostPath on the k3s VM** (`/var/lib/fleetros/stackgres-backups`), so the backups live as plain files on the multipass filesystem and can be copied out with `tar` / `rsync`. In **prod**, set `data.minio.enabled: false` and point `data.postgres.backups.objectStorage` at a real bucket (B2 / S3 / GCS).
+
+### What is enabled in local
+
+- Daily base backup at **02:00 UTC** (`cronSchedule: "0 2 * * *"`)
+- Sliding **7-day retention** — operator prunes the oldest base backup + its WALs once exceeded
+- Continuous WAL archiving in between (point-in-time recovery)
+- Bucket: `stackgres-backups` on `http://minio.data.svc.cluster.local:9000`
+- Credentials: Secret `stackgres-backup-creds` (`accessKeyId` / `secretAccessKey`) in the `data` namespace
+
+### View backups
+
+```bash
+# Via Kubernetes — what StackGres knows about
+kubectl -n data get sgbackup
+kubectl -n data describe sgbackup <name>
+
+# Via the StackGres UI (recommended)
+make local-stackgres-ui          # prints URL + admin password
+# → open https://stackgres.fleetros.local → Clusters → postgres → Backups
+
+# Via the filesystem on the VM (raw WAL-G layout)
+multipass shell fleetros-local
+sudo ls -lh /var/lib/fleetros/stackgres-backups/stackgres-backups/
+
+# Via the MinIO console
+kubectl -n data port-forward svc/minio 9001:9001
+# → open http://localhost:9001 (login: minioadmin / minioadmin)
+```
+
+### Trigger an ad-hoc backup
+
+```bash
+cat <<YAML | kubectl apply -f -
+apiVersion: stackgres.io/v1
+kind: SGBackup
+metadata:
+  name: manual-$(date +%Y%m%d-%H%M%S)
+  namespace: data
+spec:
+  sgCluster: postgres
+  managedLifecycle: false      # excluded from retention pruning
+YAML
+kubectl -n data get sgbackup -w
+```
+
+### Restore into a fresh cluster
+
+StackGres restores by creating a **new** SGCluster whose `initialData.restore.fromBackup` points at an existing SGBackup. You then cut traffic over by renaming Services (or just bring up alongside as `postgres-restored` and re-point apps).
+
+```bash
+# 1. Pick a backup
+kubectl -n data get sgbackup
+BACKUP=<name-from-list>
+
+# 2. Create the restore cluster (re-uses postgres-profile / -config / -pooling)
+cat <<YAML | kubectl apply -f -
+apiVersion: stackgres.io/v1
+kind: SGCluster
+metadata:
+  name: postgres-restored
+  namespace: data
+spec:
+  instances: 1
+  postgres:
+    version: "16"
+  sgInstanceProfile: postgres-profile
+  configurations:
+    sgPostgresConfig: postgres-config
+    sgPoolingConfig: postgres-pooling
+  pods:
+    persistentVolume:
+      size: 10Gi
+  initialData:
+    restore:
+      fromBackup:
+        name: ${BACKUP}
+YAML
+
+# 3. Wait for the new primary
+kubectl -n data wait sgcluster/postgres-restored --for=condition=PodScheduled --timeout=5m
+kubectl -n data get pods -l app=StackGresCluster
+
+# 4. Cut over (option A: re-point apps to postgres-restored.data.svc:5432)
+#    or (option B: delete the old cluster and rename the new one to `postgres`)
+```
+
+> **Off-VM copy** (disaster recovery for the local stack): the backup files are plain WAL-G output on the VM at `/var/lib/fleetros/stackgres-backups`. A simple `multipass transfer fleetros-local:/var/lib/fleetros/stackgres-backups ./backup-archive` (run as root via `multipass exec`) is enough to mirror them to your host.

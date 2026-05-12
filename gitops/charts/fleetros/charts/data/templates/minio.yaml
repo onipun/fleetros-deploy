@@ -1,0 +1,176 @@
+{{- if and .Values.minio .Values.minio.enabled }}
+# ----------------------------------------------------------------------------
+# Single-node MinIO (S3-compatible) used as the StackGres backup target for
+# local environments. Not for production: prod points SGObjectStorage at a
+# real cloud bucket (B2 / S3 / GCS) and leaves this disabled.
+#
+# Renders only when `minio.enabled: true`. The Secret named here is the
+# same one referenced by `postgres.backups.objectStorage.credentialsSecretName`
+# so SGObjectStorage can authenticate without extra wiring.
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.minio.credentialsSecretName | default "stackgres-backup-creds" }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+type: Opaque
+stringData:
+  accessKeyId: {{ .Values.minio.rootUser | quote }}
+  secretAccessKey: {{ .Values.minio.rootPassword | quote }}
+---
+{{- if not .Values.minio.persistence.hostPath }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size | quote }}
+  {{- with .Values.minio.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: {{ .Values.minio.image | default "quay.io/minio/minio:latest" }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecretName | default "stackgres-backup-creds" }}
+                  key: accessKeyId
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecretName | default "stackgres-backup-creds" }}
+                  key: secretAccessKey
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          {{- if .Values.minio.persistence.hostPath }}
+          # Bind-mounted directory on the k3s node — backups are visible at
+          # this exact path on the host filesystem (multipass shell into the
+          # VM, ls /var/lib/fleetros/stackgres-backups). Survives PVC churn
+          # and is trivially copyable with `tar` / `rsync`.
+          hostPath:
+            path: {{ .Values.minio.persistence.hostPath | quote }}
+            type: DirectoryOrCreate
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: minio-data
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+# One-shot Job that uses the MinIO client (`mc`) to create the backup bucket
+# on a fresh install. Idempotent: `mc mb --ignore-existing` is a no-op when
+# the bucket already exists, so Argo CD can re-run this Job on every sync
+# without errors.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-create-bucket
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: {{ .Values.minio.mcImage | default "quay.io/minio/mc:latest" }}
+          env:
+            - name: MC_HOST_local
+              value: "http://$(ACCESS_KEY):$(SECRET_KEY)@minio.{{ .Values.namespace }}.svc.cluster.local:9000"
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecretName | default "stackgres-backup-creds" }}
+                  key: accessKeyId
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecretName | default "stackgres-backup-creds" }}
+                  key: secretAccessKey
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # Wait for MinIO to answer health checks before issuing mc commands.
+              for i in $(seq 1 30); do
+                if mc ready local >/dev/null 2>&1; then
+                  break
+                fi
+                echo "waiting for minio... ($i/30)"
+                sleep 3
+              done
+              mc mb --ignore-existing "local/{{ .Values.minio.bucket }}"
+              mc ls local/
+{{- end }}

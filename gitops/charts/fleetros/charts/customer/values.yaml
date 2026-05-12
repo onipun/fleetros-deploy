@@ -32,6 +32,7 @@ portalProxy:
   port: 3000
   paths:
     - /portal
+    - /receipt
     - /_next
 
 # Database (StackGres-managed Postgres in the `data` namespace).
