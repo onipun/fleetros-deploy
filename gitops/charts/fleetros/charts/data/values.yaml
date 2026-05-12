@@ -17,32 +17,6 @@ postgres:
     - keycloak
     - payment_platform
     - website
-  # Automated base backups + WAL archiving.
-  #
-  # When `enabled: true`, the chart renders an SGObjectStorage (using the
-  # `objectStorage` config below) and wires it into SGCluster.spec.configurations.backups
-  # so the operator runs a daily base backup on `cronSchedule` and prunes
-  # everything older than `retention` base backups. The sliding window means
-  # the newest backup always replaces the oldest — no manual cleanup, no
-  # action required in the StackGres UI in production.
-  backups:
-    enabled: false
-    cronSchedule: "0 2 * * *"   # daily at 02:00 UTC
-    retention: 7                # keep the last 7 daily base backups
-    compression: lz4
-    # SGObjectStorage backend. Only one of s3Compatible / s3 / gcs / azureBlob
-    # is consumed at a time. `s3Compatible` covers MinIO + most non-AWS
-    # providers. The credentials Secret MUST exist in the same namespace as
-    # the SGCluster (`data`); Ansible's bootstrap role seeds it.
-    objectStorage:
-      type: s3Compatible
-      bucket: ""
-      region: "us-east-1"
-      endpoint: ""
-      enablePathStyleAddressing: true
-      credentialsSecretName: stackgres-backup-creds
-      accessKeyIdKey: accessKeyId
-      secretAccessKeyKey: secretAccessKey
 
 redis:
   enabled: true
@@ -67,25 +41,3 @@ keycloak:
     enabled: false
   realmImport:
     enabled: false
-
-# Optional single-node MinIO used as a local S3 endpoint for StackGres
-# backups (so `make local-*` works without an internet bucket). Disabled by
-# default so prod stays on its real provider. When enabled, the same Secret
-# named here is referenced by `postgres.backups.objectStorage.credentialsSecretName`
-# below — they MUST match.
-minio:
-  enabled: false
-  image: quay.io/minio/minio:latest
-  mcImage: quay.io/minio/mc:latest
-  rootUser: "minioadmin"
-  rootPassword: "minioadmin"
-  bucket: "stackgres-backups"
-  credentialsSecretName: stackgres-backup-creds
-  persistence:
-    size: 10Gi
-    storageClass: ""
-    # When set, MinIO's /data is a hostPath on the k3s node instead of a
-    # dynamic PVC. Useful in local single-node clusters where you want the
-    # backup files to live at a known, inspectable path on the VM. Leave
-    # empty in prod (use the PVC + a real StorageClass).
-    hostPath: ""
