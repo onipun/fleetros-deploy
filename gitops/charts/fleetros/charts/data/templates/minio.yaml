@@ -146,8 +146,6 @@ spec:
         - name: mc
           image: {{ .Values.minio.mcImage | default "quay.io/minio/mc:latest" }}
           env:
-            - name: MC_HOST_local
-              value: "http://$(ACCESS_KEY):$(SECRET_KEY)@minio.{{ .Values.namespace }}.svc.cluster.local:9000"
             - name: ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -163,6 +161,7 @@ spec:
             - -c
             - |
               set -eu
+              export MC_HOST_local="http://${ACCESS_KEY}:${SECRET_KEY}@minio.{{ .Values.namespace }}.svc.cluster.local:9000"
               # Wait for MinIO to answer health checks before issuing mc commands.
               for i in $(seq 1 30); do
                 if mc ready local >/dev/null 2>&1; then
