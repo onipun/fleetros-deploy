@@ -7,6 +7,26 @@ data:
   postgres:
     persistence:
       size: 50Gi
+    # Daily off-site base backup + WAL archiving. Sliding 7-day retention
+    # window: the newest snapshot replaces the oldest automatically, no
+    # ops action required in the StackGres UI.
+    backups:
+      enabled: true
+      cronSchedule: "0 2 * * *"   # daily at 02:00 UTC
+      retention: 7
+      compression: lz4
+      objectStorage:
+        type: s3Compatible
+        # Bucket + endpoint MUST be set per-environment (e.g. via Ansible
+        # vault override) before enabling. Credentials live in the
+        # `stackgres-backup-creds` Secret in the `data` namespace.
+        bucket: ${STACKGRES_BACKUP_BUCKET}
+        region: ${STACKGRES_BACKUP_REGION}
+        endpoint: ${STACKGRES_BACKUP_ENDPOINT}
+        enablePathStyleAddressing: true
+        credentialsSecretName: stackgres-backup-creds
+        accessKeyIdKey: accessKeyId
+        secretAccessKeyKey: secretAccessKey
   redis:
     persistence:
       size: 5Gi
@@ -29,7 +49,13 @@ platform:
       tag: v0.1.0
       port: 8082
       ingressHost: api
-      env: { SPRING_PROFILES_ACTIVE: prod }
+      env:
+        SPRING_PROFILES_ACTIVE: prod
+        # Public origin used to render absolute URLs in outbound emails
+        # (booking confirmations, payment receipts, magic links). Without
+        # this, emailed links point at the application-prod default
+        # placeholder host.
+        FRONTEND_URL: https://app.fleetros.example
       # Persist vehicle/booking/offering image uploads across pod restarts.
       persistence:
         enabled: true

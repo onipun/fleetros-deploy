@@ -17,6 +17,32 @@ postgres:
     - keycloak
     - payment_platform
     - website
+  # Automated base backups + WAL archiving.
+  #
+  # When `enabled: true`, the chart renders an SGObjectStorage (using the
+  # `objectStorage` config below) and wires it into SGCluster.spec.configurations.backups
+  # so the operator runs a daily base backup on `cronSchedule` and prunes
+  # everything older than `retention` base backups. The sliding window means
+  # the newest backup always replaces the oldest — no manual cleanup, no
+  # action required in the StackGres UI in production.
+  backups:
+    enabled: false
+    cronSchedule: "0 2 * * *"   # daily at 02:00 UTC
+    retention: 7                # keep the last 7 daily base backups
+    compression: lz4
+    # SGObjectStorage backend. Only one of s3Compatible / s3 / gcs / azureBlob
+    # is consumed at a time. `s3Compatible` covers MinIO + most non-AWS
+    # providers. The credentials Secret MUST exist in the same namespace as
+    # the SGCluster (`data`); Ansible's bootstrap role seeds it.
+    objectStorage:
+      type: s3Compatible
+      bucket: ""
+      region: "us-east-1"
+      endpoint: ""
+      enablePathStyleAddressing: true
+      credentialsSecretName: stackgres-backup-creds
+      accessKeyIdKey: accessKeyId
+      secretAccessKeyKey: secretAccessKey
 
 redis:
   enabled: true
