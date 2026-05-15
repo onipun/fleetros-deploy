@@ -7,6 +7,15 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $name }}-{{ $svc.persistence.name | default "uploads" }}
   namespace: {{ $.Values.namespace }}
+  annotations:
+    # Same sync-wave as the Deployment below. With WaitForFirstConsumer
+    # storage classes (e.g. k3s local-path), a PVC stays Pending until a
+    # pod schedules — so if Argo CD applies the PVC in an earlier wave it
+    # blocks forever waiting for the volume to become Bound, and the
+    # Deployment that would trigger the binding is never created. Pinning
+    # the PVC to the same wave as the Deployment lets `kubectl apply`
+    # create both together so the new pod schedules and binds the PVC.
+    argocd.argoproj.io/sync-wave: {{ $svc.syncWave | default "2" | quote }}
 spec:
   accessModes:
     - {{ $svc.persistence.accessMode | default "ReadWriteOnce" }}
