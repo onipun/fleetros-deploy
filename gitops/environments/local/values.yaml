@@ -6,7 +6,7 @@ global:
 data:
   postgres:
     persistence:
-      size: 5Gi   # smaller for laptop
+      size: 30Gi   # smaller for laptop
     cpu: "250m"
     memory: "512Mi"
     # Daily 02:00 UTC base backup, sliding 7-day retention, written to the

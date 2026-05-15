@@ -7,7 +7,7 @@ SHELL := /bin/bash
 VM_NAME       ?= fleetros-local
 VM_CPUS       ?= 4
 VM_MEMORY     ?= 12G
-VM_DISK       ?= 40G
+VM_DISK       ?= 60G
 VM_IMAGE      ?= 24.04
 
 ANSIBLE_DIR   := infra/ansible
