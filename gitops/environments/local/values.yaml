@@ -76,7 +76,7 @@ monitoring:
     enabled: true   # flip to true after pasting the URL below
     slack:
       webhookUrl: "https://hooks.slack.com/services/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"   # e.g. https://hooks.slack.com/services/T000/B000/xxxx
-      defaultChannel: "#fleetros-local-alerts"
+      defaultChannel: "#all-monitoring"
     # Per-category channels — leave blank to use defaultChannel.
     # channels:
     #   podResources:   "#fleetros-pods"
