@@ -127,6 +127,45 @@ local-grafana-ui: ## Print Grafana URL + admin credentials
 local-grafana-portforward: ## Port-forward Grafana to http://localhost:3000
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
 
+##@ Local — Slack alerting
+local-alerts-lint: ## Lint + render alerting ConfigMaps without applying
+	helm lint $(GITOPS_DIR)/charts/fleetros -f $(LOCAL_VALUES)
+	@helm template fleetros $(GITOPS_DIR)/charts/fleetros -f $(LOCAL_VALUES) \
+		--set monitoring.alerting.enabled=true \
+		--set monitoring.alerting.slack.webhookUrl=https://hooks.slack.com/services/T0/B0/test \
+		--show-only charts/monitoring/templates/grafana-alerting-rules.yaml \
+		| python3 -c "import yaml,sys; d=yaml.safe_load(sys.stdin); inner=yaml.safe_load(d['data']['rules.yaml']); print('rule groups:', len(inner['groups'])); print('total rules:', sum(len(g['rules']) for g in inner['groups']))"
+
+local-alerts-status: ## Show provisioned alert rules + contact points in the running Grafana
+	@echo "Alerting ConfigMaps in monitoring/:"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring get cm -l grafana_alert=1
+	@echo
+	@echo "Grafana sidecar logs (last 20 lines, alert-related):"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring logs -l app.kubernetes.io/name=grafana -c grafana-sc-dashboard --tail=200 2>/dev/null | grep -i alert | tail -20 || true
+
+local-alerts-test: ## Send a test message to the Slack webhook (verifies Slack end of the pipe)
+	@WEBHOOK=$$(yq '.monitoring.alerting.slack.webhookUrl' $(LOCAL_VALUES) 2>/dev/null); \
+	if [ -z "$$WEBHOOK" ] || [ "$$WEBHOOK" = "null" ] || [ "$$WEBHOOK" = "\"\"" ]; then \
+		echo "ERROR: monitoring.alerting.slack.webhookUrl not set in $(LOCAL_VALUES)."; \
+		echo "Generate at https://api.slack.com/apps and paste it under monitoring.alerting.slack."; \
+		exit 1; \
+	fi; \
+	WEBHOOK=$$(echo "$$WEBHOOK" | tr -d '"'); \
+	echo "POST to Slack webhook (synthetic alert-pipeline test)..."; \
+	curl -sS -X POST -H 'Content-Type: application/json' "$$WEBHOOK" \
+	  --data '{"text":":satellite_antenna: Fleetros alerting *pipeline test* — if you see this, the Slack webhook is live."}'; \
+	echo
+
+local-alerts-trigger-watchdog: ## Force-evaluate the Grafana watchdog rule (proves end-to-end Grafana→Slack)
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
+		curl -sS -u $$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-user}' | base64 -d):$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d) \
+		-X POST http://localhost:3000/api/alertmanager/grafana/api/v1/alerts \
+		-H 'Content-Type: application/json' \
+		--data '[{"labels":{"alertname":"fleetros-pipeline-test","severity":"info","category":"watchdog"},"annotations":{"summary":"Manual pipeline-test alert triggered by make local-alerts-trigger-watchdog"}}]' && echo
+
+local-alerts-retest: local-alerts-lint local-alerts-status local-alerts-test ## Re-run the full alert-pipeline self-test (lint + status + Slack ping)
+	@echo "OK — alert pipeline retest finished. Check Slack for the test message."
+
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 
@@ -354,4 +393,5 @@ helm-template-prod:
         local-argocd-ui local-argocd-portforward local-traefik-portforward local-k9s local-vm-ssh-trust \
         local-mkcert-check local-stackgres-ui local-stackgres-portforward \
         local-build-web local-import-web local-rollout-web local-logs-web \
-        local-build-customer local-import-customer local-rollout-customer local-logs-customer local-customer-db-push
+        local-build-customer local-import-customer local-rollout-customer local-logs-customer local-customer-db-push \
+        local-alerts-lint local-alerts-status local-alerts-test local-alerts-trigger-watchdog local-alerts-retest

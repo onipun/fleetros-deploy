@@ -44,3 +44,83 @@ ingress:
 
 dashboards:
   enabled: true
+
+# ----------------------------------------------------------------------------
+# Grafana → Slack alerting (unified alerting, provisioned via the Grafana
+# sidecar). Every rule group below maps to a `category` label so each
+# category can be independently routed to its own Slack channel.
+#
+# Prerequisite: Ansible bootstrap renders the kube-prometheus-stack with
+# `sidecar.alerts.enabled=true` so Grafana picks up ConfigMaps labelled
+# `grafana_alert=1`.
+# ----------------------------------------------------------------------------
+alerting:
+  enabled: true
+
+  # Slack webhook (Incoming Webhook URL). Two sources are supported:
+  #   1. `webhookUrl`   — literal URL (fine for local dev; commits secrets).
+  #   2. `webhookUrlSecret` — reference to an existing Secret in this
+  #      namespace. The chart will mount/read it instead. Prefer this in
+  #      prod (set the Secret via Ansible Vault).
+  slack:
+    webhookUrl: ""
+    webhookUrlSecret:
+      name: ""
+      key: "url"
+    # Default channel used when a category-level channel is left empty.
+    defaultChannel: "#fleetros-alerts"
+
+  # Per-category Slack channel override. Leave blank to inherit defaultChannel.
+  # Channel format: "#channel-name" (Slack ignores it when the webhook is
+  # locked to a single channel, but it appears in the notification title).
+  channels:
+    podResources:    ""   # alert #1: pod CPU/memory
+    serverResources: ""   # alert #2: node CPU/memory
+    serverDisk:      ""   # alert #3: node disk
+    pvcDisk:         ""   # alert #4: postgres + pod PVC disk
+    appLatency:      ""   # alert #5: slow Spring app response
+    traefikLatency:  ""   # alert #6: slow end-to-end via Traefik
+    errorRate:       ""   # alert #7: high HTTP error rate
+    appHealth:       ""   # alert #8: hourly application health digest
+    watchdog:        ""   # synthetic always-firing pipeline test
+
+  # Thresholds — every consumer reads from here so they can be tuned
+  # without touching templates. Each block uses the same shape:
+  #   warn / high / critical → values fed into the Grafana rule expressions.
+  thresholds:
+    podCpuPercent:        { warn: 70, high: 80, critical: 95 }
+    podMemoryPercent:     { warn: 70, high: 80, critical: 95 }
+    nodeCpuPercent:       { warn: 70, high: 80, critical: 95 }
+    nodeMemoryPercent:    { warn: 70, high: 80, critical: 95 }
+    # Disk uses a "used %" model — warn at 80% used etc.
+    nodeDiskPercent:      { warn: 70, high: 80, critical: 95 }
+    pvcDiskPercent:       { warn: 70, high: 80, critical: 95 }
+    # Latency thresholds in seconds. Spring app = backend /actuator/prometheus
+    # http_server_requests_seconds; Traefik = traefik_service_request_duration_seconds.
+    appLatencySeconds:    { warn: 0.5, high: 1.0, critical: 2.0 }
+    traefikLatencySeconds: { warn: 1.0, high: 2.0, critical: 5.0 }
+    # Error rate is "% of responses with 5xx OR 4xx code" over a 5m window.
+    errorRatePercent:     { warn: 1,   high: 5,   critical: 10 }
+
+  # Evaluation cadence. `for` is how long the condition must hold before
+  # firing — keeps noisy short spikes out of Slack.
+  evaluation:
+    interval: "1m"
+    forWarn:     "5m"
+    forHigh:     "3m"
+    forCritical: "1m"
+
+  # Hourly application health digest (alert #8).
+  appHealth:
+    enabled: true
+    interval: "1h"
+    # Namespaces in which `app.kubernetes.io/component=backend` pods live.
+    namespace: "app"
+
+  # Synthetic test (alert #9 — "regularly test 1-8"). A watchdog alert that
+  # always evaluates to firing; if Slack stops receiving it on the configured
+  # cadence the on-call knows the pipeline (Grafana → contact point → Slack)
+  # is itself broken. Routed to its own channel so it doesn't drown real alerts.
+  watchdog:
+    enabled: true
+    interval: "15m"

@@ -1,0 +1,111 @@
+{{- if and .Values.enabled .Values.alerting.enabled }}
+{{- /*
+Grafana Alerting provisioning — contact points + notification policy tree.
+Picked up by the Grafana sidecar (label `grafana_alert=1`), which writes
+the file under /etc/grafana/provisioning/alerting/ and triggers Grafana
+to re-provision.
+
+The Slack webhook URL is either:
+  - read from a referenced Secret (preferred) via `valueFrom` style — but
+    Grafana's file-provisioning syntax has no secret resolver, so we
+    instead inline the URL at render time. For prod, set the URL through
+    a values-override file generated from Ansible Vault (the chart is
+    rendered server-side by Argo CD, so the Secret pattern is replaced
+    by a per-env vault-encrypted values file).
+  - or the literal `webhookUrl` value (local dev only).
+*/}}
+{{- $slack := .Values.alerting.slack -}}
+{{- $url := $slack.webhookUrl -}}
+{{- if and (not $url) $slack.webhookUrlSecret.name -}}
+{{- /* The literal URL is mandatory at render time. Fail fast with a clear
+       message so misconfigured environments don't silently lose alerts. */ -}}
+{{- fail "alerting.slack.webhookUrl must be set (the chart cannot resolve Secret references at render time). Provide the URL via a vault-encrypted environment values file." -}}
+{{- end -}}
+{{- if not $url -}}
+{{- fail "alerting.enabled=true but alerting.slack.webhookUrl is empty. Set the Slack Incoming Webhook URL in environments/<env>/values.yaml (or a vault override)." -}}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleetros-alerting-contactpoints
+  namespace: {{ .Values.namespace }}
+  labels:
+    grafana_alert: "1"
+data:
+  contactpoints.yaml: |-
+    apiVersion: 1
+    contactPoints:
+      - orgId: 1
+        name: slack-default
+        receivers:
+          - uid: slack-default
+            type: slack
+            settings:
+              url: {{ $url | quote }}
+              recipient: {{ $slack.defaultChannel | quote }}
+              title: '{{`{{ template "slack.fleetros.title" . }}`}}'
+              text:  '{{`{{ template "slack.fleetros.text" . }}`}}'
+            disableResolveMessage: false
+      {{- range $key, $_ := .Values.alerting.channels }}
+      - orgId: 1
+        name: slack-{{ $key | kebabcase }}
+        receivers:
+          - uid: slack-{{ $key | kebabcase }}
+            type: slack
+            settings:
+              url: {{ $url | quote }}
+              recipient: {{ include "fleetros.alerting.channel" (dict "ctx" $ "key" $key) | quote }}
+              title: '{{`{{ template "slack.fleetros.title" . }}`}}'
+              text:  '{{`{{ template "slack.fleetros.text" . }}`}}'
+            disableResolveMessage: false
+      {{- end }}
+    policies:
+      - orgId: 1
+        receiver: slack-default
+        group_by: ['alertname', 'category', 'severity']
+        group_wait: 30s
+        group_interval: 1m
+        repeat_interval: 4h
+        routes:
+          {{- range $key, $_ := .Values.alerting.channels }}
+          - receiver: slack-{{ $key | kebabcase }}
+            object_matchers:
+              - ['category', '=', '{{ $key | kebabcase }}']
+            group_by: ['alertname', 'severity']
+            group_wait: 30s
+            group_interval: 1m
+            repeat_interval: 4h
+            continue: false
+          {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleetros-alerting-templates
+  namespace: {{ .Values.namespace }}
+  labels:
+    grafana_alert: "1"
+data:
+  templates.yaml: |-
+    apiVersion: 1
+    templates:
+      - orgId: 1
+        name: slack.fleetros.title
+        template: |
+          {{`{{ define "slack.fleetros.title" -}}`}}
+          [{{`{{ .Status | toUpper }}`}}{{`{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}`}}] Fleetros — {{`{{ .CommonLabels.category }}`}} ({{`{{ .CommonLabels.severity }}`}})
+          {{`{{- end }}`}}
+      - orgId: 1
+        name: slack.fleetros.text
+        template: |
+          {{`{{ define "slack.fleetros.text" -}}`}}
+          {{`{{ range .Alerts -}}`}}
+          *{{`{{ .Annotations.summary }}`}}*
+          status: `{{`{{ .Status }}`}}`  severity: `{{`{{ .Labels.severity }}`}}`
+          {{`{{ if .Labels.namespace }}`}}namespace: `{{`{{ .Labels.namespace }}`}}`{{`{{ end }}`}}
+          {{`{{ if .Labels.pod }}`}}pod: `{{`{{ .Labels.pod }}`}}`{{`{{ end }}`}}
+          {{`{{ if .Labels.instance }}`}}instance: `{{`{{ .Labels.instance }}`}}`{{`{{ end }}`}}
+          {{`{{ if .Annotations.runbook_url }}`}}<{{`{{ .Annotations.runbook_url }}`}}|runbook>{{`{{ end }}`}}
+          {{`{{ end -}}`}}
+          {{`{{- end }}`}}
+{{- end }}

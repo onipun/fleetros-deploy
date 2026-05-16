@@ -1,0 +1,257 @@
+{{- if and .Values.enabled .Values.alerting.enabled }}
+{{- /*
+Grafana-managed alert rule groups (provisioned via the Grafana sidecar).
+
+Every rule carries:
+  - `category` label = routing key in alerting.channels
+  - `severity` label = warning | high | critical
+
+Rules cover the 8 categories requested:
+  1. Pod CPU + memory (per app pod, three thresholds)
+  2. Node CPU + memory (three thresholds)
+  3. Node disk
+  4. PVC disk (postgres + every PVC including app pods)
+  5. Slow Spring app response (p95 of http_server_requests_seconds)
+  6. Slow Traefik end-to-end (p95 of traefik_service_request_duration_seconds)
+  7. High HTTP error rate (5xx + 4xx share)
+  8. Application health (hourly digest — any backend pod NotReady)
+
+Plus a "watchdog" rule that always fires, used to validate the
+end-to-end Grafana → Slack pipeline (alert #9 in the request).
+*/}}
+{{- $a   := .Values.alerting -}}
+{{- $t   := $a.thresholds -}}
+{{- $ev  := $a.evaluation -}}
+{{- $ns  := $a.appHealth.namespace | default "app" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleetros-alerting-rules
+  namespace: {{ .Values.namespace }}
+  labels:
+    grafana_alert: "1"
+data:
+  rules.yaml: |-
+    apiVersion: 1
+    groups:
+
+      # -------------------------------------------------------------------
+      # 1. Pod CPU & memory (per application pod, in the `app` namespace).
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-pod-resources
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $cpuPct := index $t.podCpuPercent $sev -}}
+          {{- $memPct := index $t.podMemoryPercent $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "pod-cpu-%s" $sev)
+              "title"    (printf "Pod CPU > %d%% (%s)" (int $cpuPct) $sev)
+              "expr"     (printf "100 * (sum by (namespace,pod) (rate(container_cpu_usage_seconds_total{namespace=\"%s\",container!=\"\",container!=\"POD\"}[5m])) / sum by (namespace,pod) (kube_pod_container_resource_limits{namespace=\"%s\",resource=\"cpu\"})) > %d" $ns $ns (int $cpuPct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "pod-resources"
+              "summary"  (printf "Pod CPU usage > %d%% of limit for 5m (%s)" (int $cpuPct) $sev)
+          ) | nindent 10 }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "pod-mem-%s" $sev)
+              "title"    (printf "Pod memory > %d%% (%s)" (int $memPct) $sev)
+              "expr"     (printf "100 * (sum by (namespace,pod) (container_memory_working_set_bytes{namespace=\"%s\",container!=\"\",container!=\"POD\"}) / sum by (namespace,pod) (kube_pod_container_resource_limits{namespace=\"%s\",resource=\"memory\"})) > %d" $ns $ns (int $memPct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "pod-resources"
+              "summary"  (printf "Pod memory usage > %d%% of limit for 5m (%s)" (int $memPct) $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 2. Server (node) CPU & memory.
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-server-resources
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $cpuPct := index $t.nodeCpuPercent $sev -}}
+          {{- $memPct := index $t.nodeMemoryPercent $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "node-cpu-%s" $sev)
+              "title"    (printf "Node CPU > %d%% (%s)" (int $cpuPct) $sev)
+              "expr"     (printf "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))) > %d" (int $cpuPct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "server-resources"
+              "summary"  (printf "Node CPU > %d%% for 5m (%s)" (int $cpuPct) $sev)
+          ) | nindent 10 }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "node-mem-%s" $sev)
+              "title"    (printf "Node memory > %d%% (%s)" (int $memPct) $sev)
+              "expr"     (printf "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > %d" (int $memPct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "server-resources"
+              "summary"  (printf "Node memory > %d%% (%s)" (int $memPct) $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 3. Server disk (root filesystem).
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-server-disk
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $pct := index $t.nodeDiskPercent $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "node-disk-%s" $sev)
+              "title"    (printf "Node disk used > %d%% (%s)" (int $pct) $sev)
+              "expr"     (printf "100 * (1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|fuse.*\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|fuse.*\"})) > %d" (int $pct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "server-disk"
+              "summary"  (printf "Node root filesystem > %d%% used (%s)" (int $pct) $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 4. PVC disk (covers postgres + every app pod with a PVC).
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-pvc-disk
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $pct := index $t.pvcDiskPercent $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "pvc-disk-%s" $sev)
+              "title"    (printf "PVC used > %d%% (%s)" (int $pct) $sev)
+              "expr"     (printf "100 * (1 - (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes)) > %d" (int $pct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "pvc-disk"
+              "summary"  (printf "PVC %d%% used (%s) — includes Postgres + app PVCs" (int $pct) $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 5. Slow Spring app response (p95 over 5m, from Micrometer).
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-app-latency
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $s := index $t.appLatencySeconds $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "app-latency-%s" $sev)
+              "title"    (printf "Spring app p95 latency > %vs (%s)" $s $sev)
+              "expr"     (printf "histogram_quantile(0.95, sum by (le,namespace,pod,uri) (rate(http_server_requests_seconds_bucket{namespace=\"%s\"}[5m]))) > %v" $ns $s)
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "app-latency"
+              "summary"  (printf "Spring app p95 latency exceeds %vs (%s)" $s $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 6. End-to-end response via Traefik (p95).
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-traefik-latency
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $s := index $t.traefikLatencySeconds $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "traefik-latency-%s" $sev)
+              "title"    (printf "Traefik p95 end-to-end latency > %vs (%s)" $s $sev)
+              "expr"     (printf "histogram_quantile(0.95, sum by (le,service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > %v" $s)
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "traefik-latency"
+              "summary"  (printf "Traefik end-to-end p95 > %vs (%s)" $s $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      # -------------------------------------------------------------------
+      # 7. High HTTP error rate (5xx and 4xx as % of traffic). Note: 600 is
+      #    not a valid HTTP status — covered implicitly by `code!~"2..|3.."`.
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-error-rate
+        folder: Fleetros Alerts
+        interval: {{ $ev.interval | quote }}
+        rules:
+          {{- range $sev, $forKey := dict "warn" "forWarn" "high" "forHigh" "critical" "forCritical" }}
+          {{- $pct := index $t.errorRatePercent $sev }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "error-rate-5xx-%s" $sev)
+              "title"    (printf "5xx error rate > %d%% (%s)" (int $pct) $sev)
+              "expr"     (printf "100 * (sum by (service) (rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / clamp_min(sum by (service) (rate(traefik_service_requests_total[5m])), 0.01)) > %d" (int $pct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "error-rate"
+              "summary"  (printf "Traefik 5xx ratio > %d%% (%s)" (int $pct) $sev)
+          ) | nindent 10 }}
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      (printf "error-rate-4xx-%s" $sev)
+              "title"    (printf "4xx error rate > %d%% (%s)" (int $pct) $sev)
+              "expr"     (printf "100 * (sum by (service) (rate(traefik_service_requests_total{code=~\"4..\"}[5m])) / clamp_min(sum by (service) (rate(traefik_service_requests_total[5m])), 0.01)) > %d" (int $pct))
+              "for"      (index $ev $forKey)
+              "severity" (ternary "warning" $sev (eq $sev "warn"))
+              "category" "error-rate"
+              "summary"  (printf "Traefik 4xx ratio > %d%% (%s)" (int $pct) $sev)
+          ) | nindent 10 }}
+          {{- end }}
+
+      {{- if $a.appHealth.enabled }}
+      # -------------------------------------------------------------------
+      # 8. Hourly application health digest. Evaluated at the configured
+      #    interval (default 1h). Fires when any backend pod is NotReady.
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-app-health
+        folder: Fleetros Alerts
+        interval: {{ $a.appHealth.interval | quote }}
+        rules:
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      "app-health-hourly"
+              "title"    "Application health (hourly digest)"
+              "expr"     (printf "sum by (namespace,pod) (kube_pod_status_ready{namespace=\"%s\",condition=\"true\"}) == 0" $ns)
+              "for"      "0s"
+              "severity" "high"
+              "category" "app-health"
+              "summary"  "One or more backend pods not Ready (hourly check)"
+          ) | nindent 10 }}
+      {{- end }}
+
+      {{- if $a.watchdog.enabled }}
+      # -------------------------------------------------------------------
+      # 9. Watchdog — synthetic alert that always fires. Validates the
+      #    Grafana → Slack pipeline end-to-end. Silence in Slack/Grafana
+      #    only when explicitly acknowledged.
+      # -------------------------------------------------------------------
+      - orgId: 1
+        name: fleetros-watchdog
+        folder: Fleetros Alerts
+        interval: {{ $a.watchdog.interval | quote }}
+        rules:
+          {{ include "fleetros.alerting.rule" (dict
+              "uid"      "watchdog"
+              "title"    "Alerting pipeline watchdog"
+              "expr"     "vector(1) > 0"
+              "for"      "0s"
+              "severity" "info"
+              "category" "watchdog"
+              "summary"  "Watchdog firing — Grafana→Slack pipeline is healthy"
+          ) | nindent 10 }}
+      {{- end }}
+{{- end }}

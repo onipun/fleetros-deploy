@@ -77,3 +77,25 @@ web:
   env:
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.example"
     NEXTAUTH_URL: "https://app.fleetros.example"
+
+monitoring:
+  alerting:
+    # Production: set the URL via a vault-encrypted overlay (e.g.
+    # group_vars/prod/vault.yml → fleetros_slack_webhook_url) and render
+    # this file through Ansible before Argo CD pulls it. Leaving the URL
+    # blank keeps alerting disabled until ops opts in.
+    enabled: false
+    slack:
+      webhookUrl: ""   # injected from vault by `make tofu-inventory`-style overlay
+      defaultChannel: "#fleetros-prod-alerts"
+    # Per-category channel routing for prod.
+    channels:
+      podResources:    "#fleetros-prod-pods"
+      serverResources: "#fleetros-prod-infra"
+      serverDisk:      "#fleetros-prod-infra"
+      pvcDisk:         "#fleetros-prod-infra"
+      appLatency:      "#fleetros-prod-latency"
+      traefikLatency:  "#fleetros-prod-latency"
+      errorRate:       "#fleetros-prod-errors"
+      appHealth:       "#fleetros-prod-health"
+      watchdog:        "#fleetros-prod-watchdog"

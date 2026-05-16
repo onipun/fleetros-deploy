@@ -392,6 +392,15 @@
             label: grafana_datasource
             labelValue: "1"
             searchNamespace: ALL
+          # Unified alerting provisioning. Sidecar picks up ConfigMaps
+          # labelled `grafana_alert=1` from ANY namespace — the umbrella
+          # chart's monitoring subchart drops contact-points, notification
+          # policies, and alert rules into `monitoring/`.
+          alerts:
+            enabled: true
+            label: grafana_alert
+            labelValue: "1"
+            searchNamespace: ALL
         # Loki is provisioned as an extra datasource so the same Grafana
         # explorer can pivot between metrics (Prometheus) and logs (Loki).
         additionalDataSources:
