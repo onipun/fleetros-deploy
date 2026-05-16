@@ -128,6 +128,13 @@ local-grafana-portforward: ## Port-forward Grafana to http://localhost:3000
 	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
 
 ##@ Local — Slack alerting
+
+# Gitignored file that stores the real Slack Incoming Webhook URL for local
+# development. Slack auto-revokes webhooks committed to public repos, so the
+# URL never enters git: values.yaml only carries a placeholder, and
+# `local-alerts-set-webhook` patches the live cluster ConfigMap from this file.
+SLACK_WEBHOOK_FILE := infra/.local/slack-webhook
+
 local-alerts-lint: ## Lint + render alerting ConfigMaps without applying
 	helm lint $(GITOPS_DIR)/charts/fleetros -f $(LOCAL_VALUES)
 	@helm template fleetros $(GITOPS_DIR)/charts/fleetros -f $(LOCAL_VALUES) \
@@ -144,17 +151,60 @@ local-alerts-status: ## Show provisioned alert rules + contact points in the run
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring logs -l app.kubernetes.io/name=grafana -c grafana-sc-dashboard --tail=200 2>/dev/null | grep -i alert | tail -20 || true
 
 local-alerts-test: ## Send a test message to the Slack webhook (verifies Slack end of the pipe)
-	@WEBHOOK=$$(python3 -c "import yaml,sys; v=yaml.safe_load(open('$(LOCAL_VALUES)')); print((((v or {}).get('monitoring') or {}).get('alerting') or {}).get('slack',{}).get('webhookUrl') or '')"); \
-	if [ -z "$$WEBHOOK" ]; then \
-		echo "ERROR: monitoring.alerting.slack.webhookUrl not set in $(LOCAL_VALUES)."; \
-		echo "Generate at https://api.slack.com/apps and paste it under monitoring.alerting.slack."; \
+	@if [ -s "$(SLACK_WEBHOOK_FILE)" ]; then \
+		WEBHOOK=$$(head -n1 "$(SLACK_WEBHOOK_FILE)" | tr -d '[:space:]'); \
+		SRC="$(SLACK_WEBHOOK_FILE)"; \
+	else \
+		WEBHOOK=$$(python3 -c "import yaml,sys; v=yaml.safe_load(open('$(LOCAL_VALUES)')); print((((v or {}).get('monitoring') or {}).get('alerting') or {}).get('slack',{}).get('webhookUrl') or '')"); \
+		SRC="$(LOCAL_VALUES)"; \
+	fi; \
+	if [ -z "$$WEBHOOK" ] || echo "$$WEBHOOK" | grep -q PLACEHOLDER; then \
+		echo "ERROR: no real Slack webhook found."; \
+		echo "  Create a webhook at https://api.slack.com/apps and write it to:"; \
+		echo "    $(SLACK_WEBHOOK_FILE)"; \
+		echo "  Then run: make local-alerts-set-webhook"; \
 		exit 1; \
 	fi; \
-	echo "POST to Slack webhook (synthetic alert-pipeline test)..."; \
+	echo "POST to Slack webhook from $$SRC ..."; \
 	HTTP=$$(curl -sS -o /tmp/fleetros-slack.out -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$$WEBHOOK" \
 	  --data '{"text":":satellite_antenna: Fleetros alerting *pipeline test* — if you see this, the Slack webhook is live."}'); \
 	echo "HTTP $$HTTP — body: $$(cat /tmp/fleetros-slack.out)"; \
 	test "$$HTTP" = "200" || { echo "Slack rejected the webhook (HTTP $$HTTP). Check the URL or workspace permissions."; exit 1; }
+
+local-alerts-set-webhook: ## Patch the live Grafana contact-point CM with the real Slack webhook (reads $(SLACK_WEBHOOK_FILE))
+	@test -s "$(SLACK_WEBHOOK_FILE)" || { \
+		echo "ERROR: $(SLACK_WEBHOOK_FILE) missing or empty."; \
+		echo "Create it with: mkdir -p infra/.local && echo 'https://hooks.slack.com/services/...' > $(SLACK_WEBHOOK_FILE) && chmod 600 $(SLACK_WEBHOOK_FILE)"; \
+		exit 1; \
+	}
+	@WEBHOOK=$$(head -n1 "$(SLACK_WEBHOOK_FILE)" | tr -d '[:space:]'); \
+	if ! echo "$$WEBHOOK" | grep -qE '^https://hooks\.slack\.com/services/'; then \
+		echo "ERROR: $(SLACK_WEBHOOK_FILE) does not contain a Slack webhook URL."; exit 1; \
+	fi; \
+	echo "Rendering contact-points ConfigMap with webhook from $(SLACK_WEBHOOK_FILE)..."; \
+	TMP=$$(mktemp); \
+	helm template fleetros $(GITOPS_DIR)/charts/fleetros -f $(LOCAL_VALUES) \
+		--set monitoring.alerting.slack.webhookUrl="$$WEBHOOK" \
+		--show-only charts/monitoring/templates/grafana-alerting-contactpoints.yaml \
+		2>/dev/null | tee "$$TMP" > /dev/null; \
+	test -s "$$TMP" || { echo "ERROR: helm template produced empty output"; rm -f "$$TMP"; exit 1; }; \
+	echo "Applying to monitoring namespace..."; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring apply -f "$$TMP"; \
+	rm -f "$$TMP"; \
+	echo "Restarting Grafana so the alerts sidecar re-provisions..."; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring rollout restart deploy/kube-prometheus-stack-grafana; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring rollout status  deploy/kube-prometheus-stack-grafana --timeout=180s; \
+	echo "Done. Verify with: make local-alerts-verify"
+
+local-alerts-verify: ## Verify the webhook URL Grafana is actually using matches $(SLACK_WEBHOOK_FILE)
+	@test -s "$(SLACK_WEBHOOK_FILE)" || { echo "ERROR: $(SLACK_WEBHOOK_FILE) missing"; exit 1; }
+	@EXPECTED=$$(head -n1 "$(SLACK_WEBHOOK_FILE)" | tr -d '[:space:]'); \
+	LIVE=$$(KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
+		grep -m1 -oE 'https://hooks\.slack\.com/services/[^"]+' /etc/grafana/provisioning/alerting/contactpoints.yaml 2>/dev/null); \
+	echo "expected (local file):  $$EXPECTED"; \
+	echo "live (grafana mount):   $$LIVE"; \
+	if [ "$$EXPECTED" = "$$LIVE" ]; then echo "OK — Grafana is using the local webhook."; else echo "DRIFT — run: make local-alerts-set-webhook"; exit 1; fi
+
 
 local-alerts-trigger-watchdog: ## Force-evaluate the Grafana watchdog rule (proves end-to-end Grafana→Slack)
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
@@ -163,7 +213,7 @@ local-alerts-trigger-watchdog: ## Force-evaluate the Grafana watchdog rule (prov
 		-H 'Content-Type: application/json' \
 		--data '[{"labels":{"alertname":"fleetros-pipeline-test","severity":"info","category":"watchdog"},"annotations":{"summary":"Manual pipeline-test alert triggered by make local-alerts-trigger-watchdog"}}]' && echo
 
-local-alerts-retest: local-alerts-lint local-alerts-status local-alerts-test ## Re-run the full alert-pipeline self-test (lint + status + Slack ping)
+local-alerts-retest: local-alerts-lint local-alerts-status local-alerts-test local-alerts-verify ## Re-run the full alert-pipeline self-test (lint + status + Slack ping + drift check)
 	@echo "OK — alert pipeline retest finished. Check Slack for the test message."
 
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)

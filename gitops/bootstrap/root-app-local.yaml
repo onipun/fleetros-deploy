@@ -59,6 +59,17 @@ spec:
     - group: ""
       kind: Secret
       jsonPointers: ["/data"]
+    # The Slack webhook URL is intentionally kept OUT of git (Slack revokes
+    # webhooks it spots in public repos). The chart renders the contact-point
+    # ConfigMap with a placeholder URL; the real one is patched in by
+    # `make local-alerts-set-webhook` from a gitignored local file. Tell Argo
+    # to ignore /data drift on this specific ConfigMap so selfHeal doesn't
+    # clobber the patched URL.
+    - group: ""
+      kind: ConfigMap
+      name: fleetros-alerting-contactpoints
+      namespace: monitoring
+      jsonPointers: ["/data"]
     # Once a PVC is Bound, kube-controller-manager stamps `spec.volumeName`
     # with the auto-provisioned PV name. PVC spec is immutable after
     # creation (except resources.requests / volumeAttributesClassName), so

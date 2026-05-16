@@ -20,3 +20,5 @@ gitops/charts/**/Chart.lock
 .kube/
 *.swp
 .DS_Store
+# Local-only secrets/overrides (Slack webhooks, etc.) — never commit
+infra/.local/

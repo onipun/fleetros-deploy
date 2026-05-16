@@ -73,9 +73,16 @@ monitoring:
     # ConfigMaps but Grafana will fail to provision the Slack contact
     # point (helm template / lint will fail until a value is provided).
     # Generate at: https://api.slack.com/apps → Incoming Webhooks.
-    enabled: true   # flip to true after pasting the URL below
+    enabled: true
     slack:
-      webhookUrl: "https://hooks.slack.com/services/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"   # e.g. https://hooks.slack.com/services/T000/B000/xxxx
+      # IMPORTANT: do NOT commit a real webhook URL — Slack auto-revokes any
+      # webhook it sees in a public repository. The placeholder below is what
+      # Argo CD will bootstrap the contact-point ConfigMap with; the real URL
+      # is patched in afterwards via `make local-alerts-set-webhook`, which
+      # reads it from the gitignored file `infra/.local/slack-webhook`.
+      # Argo CD's `ignoreDifferences` rule in gitops/bootstrap/root-app-local.yaml
+      # keeps Argo from selfHealing the live URL back to this placeholder.
+      webhookUrl: "https://hooks.slack.com/services/PLACEHOLDER/PLACEHOLDER/PLACEHOLDER"
       defaultChannel: "#all-monitoring"
     # Per-category channels — leave blank to use defaultChannel.
     # channels:
