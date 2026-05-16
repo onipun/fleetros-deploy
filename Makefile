@@ -144,17 +144,17 @@ local-alerts-status: ## Show provisioned alert rules + contact points in the run
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring logs -l app.kubernetes.io/name=grafana -c grafana-sc-dashboard --tail=200 2>/dev/null | grep -i alert | tail -20 || true
 
 local-alerts-test: ## Send a test message to the Slack webhook (verifies Slack end of the pipe)
-	@WEBHOOK=$$(yq '.monitoring.alerting.slack.webhookUrl' $(LOCAL_VALUES) 2>/dev/null); \
-	if [ -z "$$WEBHOOK" ] || [ "$$WEBHOOK" = "null" ] || [ "$$WEBHOOK" = "\"\"" ]; then \
+	@WEBHOOK=$$(python3 -c "import yaml,sys; v=yaml.safe_load(open('$(LOCAL_VALUES)')); print((((v or {}).get('monitoring') or {}).get('alerting') or {}).get('slack',{}).get('webhookUrl') or '')"); \
+	if [ -z "$$WEBHOOK" ]; then \
 		echo "ERROR: monitoring.alerting.slack.webhookUrl not set in $(LOCAL_VALUES)."; \
 		echo "Generate at https://api.slack.com/apps and paste it under monitoring.alerting.slack."; \
 		exit 1; \
 	fi; \
-	WEBHOOK=$$(echo "$$WEBHOOK" | tr -d '"'); \
 	echo "POST to Slack webhook (synthetic alert-pipeline test)..."; \
-	curl -sS -X POST -H 'Content-Type: application/json' "$$WEBHOOK" \
-	  --data '{"text":":satellite_antenna: Fleetros alerting *pipeline test* — if you see this, the Slack webhook is live."}'; \
-	echo
+	HTTP=$$(curl -sS -o /tmp/fleetros-slack.out -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$$WEBHOOK" \
+	  --data '{"text":":satellite_antenna: Fleetros alerting *pipeline test* — if you see this, the Slack webhook is live."}'); \
+	echo "HTTP $$HTTP — body: $$(cat /tmp/fleetros-slack.out)"; \
+	test "$$HTTP" = "200" || { echo "Slack rejected the webhook (HTTP $$HTTP). Check the URL or workspace permissions."; exit 1; }
 
 local-alerts-trigger-watchdog: ## Force-evaluate the Grafana watchdog rule (proves end-to-end Grafana→Slack)
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \

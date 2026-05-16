@@ -411,6 +411,12 @@
             url: http://loki-gateway.{{ monitoring_namespace }}.svc.cluster.local
             jsonData:
               maxLines: 1000
+              # Loki's ruler API is disabled (rulerConfig.enable_api: false),
+              # so tell Grafana NOT to probe it for alert rules. Without
+              # this the Alert rules page shows:
+              #   "Failed to load the data source configuration for Loki"
+              # because Grafana's unified alerting hits a missing endpoint.
+              manageAlerts: false
         service:
           type: ClusterIP
         # Ingress comes from the umbrella chart (Traefik + cert-manager),
