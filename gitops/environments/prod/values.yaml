@@ -41,6 +41,15 @@ platform:
     resources:
       requests: { cpu: 200m, memory: 512Mi }
       limits:   { cpu: 1500m, memory: 1536Mi }
+    # Production autoscaling: floor at 2 (HA), ceiling at 6. Threshold
+    # remains 75% so a pod is replaced before it saturates. Tune per
+    # service via `$svc.autoscaling.{minReplicas,maxReplicas,...}` below.
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 75
+      targetMemoryUtilizationPercentage: 75
   # Tags below are pinned semver — Argo CD Image Updater rewrites them via the regexp ^v\d+\.\d+\.\d+$
   services:
     backoffice:
@@ -77,6 +86,21 @@ web:
   env:
     NEXT_PUBLIC_API_BASE_URL: "https://api.fleetros.example"
     NEXTAUTH_URL: "https://app.fleetros.example"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 75
+
+customer:
+  domain: fleetros.example
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 75
 
 monitoring:
   alerting:

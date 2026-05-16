@@ -105,6 +105,21 @@ platform:
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits:   { cpu: 500m, memory: 512Mi }
+    # Local autoscaling caps at 2 replicas per service so the laptop k3s
+    # VM doesn't OOM when several services scale simultaneously. Override
+    # per service via `services.<name>.autoscaling.maxReplicas`.
+    #
+    # NOTE: Memory-based scaling is disabled locally because the Spring/JVM
+    # resident-set size (200–600 MiB steady) dwarfs the tiny local resource
+    # requests (128 MiB), so every pod would always report >100% memory
+    # utilisation and the HPA would peg at maxReplicas regardless of load.
+    # CPU utilisation is the meaningful signal for JVM services here.
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 75
+      targetMemoryUtilizationPercentage: 0   # 0 / null → omit memory metric
     # Defaults applied to every service. Per-service `env` blocks merge on top.
     env:
       SPRING_DATA_REDIS_HOST: redis.data.svc.cluster.local
@@ -299,6 +314,13 @@ web:
     # client-side.
     NEXT_PUBLIC_PORTAL_API_BASE_URL: "https://customer-api.fleetros.local"
 
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 0
+
 customer:
   # Tenant-facing website builder (Next.js, fleetros-website-builder repo).
   # Two roles, distinguished by hostname:
@@ -354,4 +376,13 @@ customer:
     ADMIN_ROLE: "ROLE_SYSTEM_ADMIN"
     # Storage (filesystem inside the pod by default)
     STORAGE_PROVIDER: "filesystem"
+  # Local-only override: disable memory-based scaling for the same reason
+  # as the Spring services (Node.js holds a steady RSS that swamps the tiny
+  # local memory request).
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 0
 

@@ -9,7 +9,9 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
+  {{- if not (and .Values.autoscaling .Values.autoscaling.enabled) }}
   replicas: {{ .Values.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       app: fleetros-customer
@@ -65,6 +67,10 @@ spec:
               port: {{ .Values.port }}
             initialDelaySeconds: 30
             periodSeconds: 30
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.persistence.enabled }}
           volumeMounts:
             - name: sites

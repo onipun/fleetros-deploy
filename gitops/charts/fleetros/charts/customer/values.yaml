@@ -49,6 +49,28 @@ db:
 
 env: {}
 
+# Resource requests/limits — HPA's Utilization mode is computed against
+# `requests`, so these MUST be set for autoscaling to work.
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 1000m, memory: 1Gi }
+
+# HorizontalPodAutoscaler. Scales the Deployment between min/max when the
+# average pod CPU or memory utilisation crosses the configured threshold
+# (percentage of `resources.requests`). Disable per-env by overriding
+# `autoscaling.enabled: false`.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+
 # Persistent storage for published tenant sites. The website-builder writes
 # rendered output to `<mountPath>/<slug>` when a tenant clicks "Publish";
 # without a writable volume the container hits EACCES because /app/public is

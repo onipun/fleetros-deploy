@@ -14,3 +14,23 @@ replicas: 1
 ingressHost: app    # https://app.fleetros.local
 extraHosts: []      # additional subdomain prefixes (e.g. ["portal"]) routed to the same service
 env: {}
+
+# Resource requests/limits — HPA's Utilization mode is computed against
+# `requests`, so these MUST be set for autoscaling to work.
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 1000m, memory: 1Gi }
+
+# HorizontalPodAutoscaler. Scales between min/max when average pod CPU or
+# memory utilisation (as a % of `resources.requests`) crosses the threshold.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300

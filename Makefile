@@ -216,6 +216,77 @@ local-alerts-trigger-watchdog: ## Force-evaluate the Grafana watchdog rule (prov
 local-alerts-retest: local-alerts-lint local-alerts-status local-alerts-test local-alerts-verify ## Re-run the full alert-pipeline self-test (lint + status + Slack ping + drift check)
 	@echo "OK — alert pipeline retest finished. Check Slack for the test message."
 
+##@ Local — Autoscaling (HPA)
+
+# Default target service for the synthetic load test. Override at the CLI:
+#   make local-hpa-loadtest HPA_TARGET=fleetros-web HPA_PORT=3000
+HPA_TARGET ?= backoffice
+HPA_PORT   ?= 8082
+HPA_PATH   ?= /actuator/health
+HPA_CONC   ?= 50
+HPA_DUR    ?= 120
+
+local-hpa-status: ## Show every HPA in the `app` namespace + live replica counts
+	@echo "HPAs in app/:"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get hpa -o wide
+	@echo
+	@echo "Pods per deployment:"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get deploy -o custom-columns='NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas'
+	@echo
+	@echo "Pod CPU/Memory (from metrics-server):"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app top pods 2>/dev/null || echo "(metrics-server not ready)"
+
+local-hpa-loadtest: ## Hammer a service via the in-cluster Service to watch the HPA scale (override HPA_TARGET/HPA_PORT/HPA_PATH/HPA_CONC/HPA_DUR)
+	@echo "Load test: http://$(HPA_TARGET).app.svc.cluster.local:$(HPA_PORT)$(HPA_PATH)"
+	@echo "  concurrency=$(HPA_CONC)  duration=$(HPA_DUR)s"
+	@echo "  watch HPA in another shell:  watch -n2 'kubectl -n app get hpa,deploy/$(HPA_TARGET) -o wide'"
+	@JOB=hpa-load-$$$$; TMP=$$(mktemp); \
+	printf '%s\n' \
+	  'apiVersion: batch/v1' \
+	  'kind: Job' \
+	  "metadata: { name: $$JOB, namespace: app }" \
+	  'spec:' \
+	  '  ttlSecondsAfterFinished: 30' \
+	  "  activeDeadlineSeconds: $$(( $(HPA_DUR) + 60 ))" \
+	  '  backoffLimit: 0' \
+	  '  template:' \
+	  '    spec:' \
+	  '      restartPolicy: Never' \
+	  '      containers:' \
+	  '        - name: load' \
+	  '          image: curlimages/curl:8.10.1' \
+	  '          command: ["sh","-c"]' \
+	  "          args: [\"END=\$$(( \$$(date +%s) + $(HPA_DUR) )); i=0; while [ \$$i -lt $(HPA_CONC) ]; do ( while [ \$$(date +%s) -lt \$$END ]; do curl -sS -o /dev/null http://$(HPA_TARGET).app.svc.cluster.local:$(HPA_PORT)$(HPA_PATH) || true; done ) & i=\$$((i+1)); done; wait; echo 'load test finished'\"]" \
+	  > $$TMP; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f $$TMP; \
+	rm -f $$TMP; \
+	echo "Job $$JOB submitted. Waiting for completion (max $$(( $(HPA_DUR) + 90 ))s)..."; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app wait --for=condition=complete job/$$JOB --timeout=$$(( $(HPA_DUR) + 90 ))s 2>&1 | tail -3 || \
+	  KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app wait --for=condition=failed job/$$JOB --timeout=5s 2>&1 | tail -3; \
+	KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app logs -l job-name=$$JOB --tail=5 2>/dev/null || true
+
+local-hpa-traffic-check: ## Verify every backing pod of $(HPA_TARGET) actually receives traffic under load (CPU > idle on every endpoint)
+	@echo "Endpoints currently behind Service $(HPA_TARGET):"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app get endpoints $(HPA_TARGET) \
+		-o jsonpath='{range .subsets[*].addresses[*]}  - {.ip} (pod {.targetRef.name}){"\n"}{end}'
+	@echo
+	@echo "Per-pod CPU now vs. 30s from now (during sustained load):"
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app top pods -l app=$(HPA_TARGET) --no-headers 2>/dev/null \
+		| awk '{print "  before  " $$1 "  " $$2}'
+	@sleep 30
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n app top pods -l app=$(HPA_TARGET) --no-headers 2>/dev/null \
+		| awk '{print "  after   " $$1 "  " $$2}'
+	@echo
+	@echo "All endpoints listed above should show non-zero CPU on the 'after' line."
+	@echo "If only one pod is busy, kube-proxy isn't load-balancing — check the Service selector."
+
+local-hpa-test: local-hpa-status ## End-to-end HPA self-test: status -> load -> traffic distribution -> status
+	@$(MAKE) --no-print-directory local-hpa-loadtest
+	@echo "Sleeping 30s to let the HPA reconcile after the burst..."
+	@sleep 30
+	@$(MAKE) --no-print-directory local-hpa-status
+	@$(MAKE) --no-print-directory local-hpa-traffic-check
+
 local-k9s: ## Open k9s on the local VM (TUI cluster debugger)
 	multipass exec $(VM_NAME) -- k9s
 

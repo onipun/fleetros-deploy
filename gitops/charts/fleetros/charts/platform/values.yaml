@@ -16,6 +16,27 @@ defaults:
     REDIS_HOST: redis.data.svc.cluster.local
     REDIS_PORT: "6379"
     KEYCLOAK_URL: http://keycloak.data.svc.cluster.local:8080
+  # HorizontalPodAutoscaler defaults applied to every Spring Boot service
+  # under the `services:` map. Each service may override any of these keys
+  # via `$svc.autoscaling`. Set `enabled: false` per service to opt out and
+  # fall back to the fixed `replicas` count above.
+  #
+  # Thresholds are percentages of the pod's resource *requests* (HPA v2
+  # Utilization mode), so make sure `resources.requests.{cpu,memory}` is
+  # set sensibly — otherwise the controller cannot compute utilisation.
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 75
+    # Cool-down windows. Scale up fast (avoid backlog), scale down slow
+    # (avoid flapping on bursty traffic).
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 30
+      scaleDown:
+        stabilizationWindowSeconds: 300
 
 services: {}   # populated by parent (umbrella) values
 
